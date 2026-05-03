@@ -42,3 +42,15 @@ coverage/
 
 # Cache
 .cache/
+
+# Claude Code
+.claude/
+
+# Workbuddy
+.workbuddy/
+
+# 参考模板
+参考模板/
+
+# 开发文档
+开发文档/

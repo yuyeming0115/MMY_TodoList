@@ -40,6 +40,35 @@ npm run tauri dev    # 开发模式
 npm run tauri build  # 构建发布
 ```
 
+## 打包发布
+
+使用项目根目录的一键打包脚本：
+
+```bash
+# macOS（构建 DMG 安装包）
+./build.sh mac
+
+# Windows（构建便携版 EXE）
+./build.sh win
+
+# 自动检测当前系统
+./build.sh
+```
+
+或在 desktop 目录下使用 npm 命令：
+
+```bash
+cd desktop
+npm run build:mac   # 构建 DMG
+npm run build:win   # 构建便携版 EXE
+```
+
+**构建产物位置：**
+- macOS: `desktop/src-tauri/target/release/bundle/dmg/`
+- Windows: `desktop/src-tauri/target/release/bundle/nsis/`
+
+**注意：** macOS DMG 只能在 macOS 上构建，Windows EXE 只能在 Windows 上构建（Tauri 不支持交叉编译）。
+
 ## 技术栈
 
 **桌面端：**
