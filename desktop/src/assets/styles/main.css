@@ -1,0 +1,45 @@
+/* MMY Todo 全局样式 */
+
+:root {
+  /* 亮色主题 */
+  --bg-light: #F5F5F0;
+  --card-light: #FFFFFF;
+  --text-light: #1A1A1A;
+  --text-secondary-light: #888888;
+  --accent-light: #4A90D9;
+  --danger-light: #E05252;
+  --border-light: #E8E8E8;
+
+  /* 暗色主题 */
+  --bg-dark: #1C1C1E;
+  --card-dark: #2C2C2E;
+  --text-dark: #F2F2F7;
+  --text-secondary-dark: #8E8E93;
+  --accent-dark: #5BA4F5;
+  --danger-dark: #FF6B6B;
+  --border-dark: #3A3A3C;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* 拖拽区域 */
+[data-tauri-drag-region] {
+  cursor: default;
+  user-select: none;
+}
