@@ -2,34 +2,6 @@
 
 简洁的任务管理应用，面向中国用户。MMY-Tools 系列项目之一。
 
-## 项目结构
-
-```
-MMY_TodoList/
-├── desktop/             # Tauri + Vue3 桌面端
-│   ├── src/             # Vue3 前端代码
-│   │   ├── components/ # UI 组件
-│   │   ├── views/      # 页面视图
-│   │   ├── stores/     # Pinia 状态管理
-│   │   ├── utils/      # 工具函数
-│   │   └── types/      # TypeScript 类型定义
-│   └── src-tauri/      # Rust 后端代码
-│       └── src/
-│           ├── models.rs   # 数据模型
-│           ├── database.rs # SQLite 操作
-│           ├── commands.rs # Tauri 命令
-│           └── lib.rs      # 入口
-│
-├── mobile/              # 微信小程序（待开发）
-│
-├── 参考模板/             # UI 参考模板
-│
-├── 开发文档/
-│   ├── 产品设计文档.md
-│   └── 重构方案.md
-│
-└── README.md
-```
 
 ## 桌面端开发
 
