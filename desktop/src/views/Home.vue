@@ -11,6 +11,7 @@ import {
 } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { useCategoryStore } from '../stores/categoryStore';
 import { useTaskStore } from '../stores/taskStore';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -285,6 +286,13 @@ async function startWindowDrag(e: MouseEvent) {
   } catch (_) {}
 }
 
+/// 隐藏窗口到系统托盘
+async function hideToTray() {
+  try {
+    await invoke('hide_to_tray');
+  } catch (_) {}
+}
+
 const themeOverrides = {
   common: {
     primaryColor: '#4A90D9',
@@ -305,7 +313,7 @@ const themeOverrides = {
           <!-- 标题栏（可拖拽区域） -->
           <div class="header" data-tauri-drag-region>
             <div class="window-controls">
-              <span class="dot close" @click="appWindow.close()" />
+              <span class="dot close" @click="hideToTray()" />
               <span class="dot minimize" @click="appWindow.minimize()" />
               <span class="dot maximize" @click="appWindow.maximize()" />
             </div>
