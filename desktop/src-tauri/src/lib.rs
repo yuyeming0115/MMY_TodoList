@@ -198,121 +198,21 @@ fn read_clipboard_image() -> Result<Option<String>, String> {
     #[cfg(target_os = "windows")]
     {
         use base64::{Engine, engine::general_purpose::STANDARD};
-        use std::path::Path;
-        use std::ptr::null_mut;
-        use winapi::um::winuser::{
-            OpenClipboard, CloseClipboard, GetClipboardData, EnumClipboardFormats,
-            GetClipboardFormatNameW, CF_HDROP,
-        };
-        use winapi::um::winbase::GlobalSize;
-        use winapi::um::shellapi::{DragQueryFileW};
-        use winapi::shared::minwindef::MAX_PATH;
 
         for attempt in 0..10 {
-            let result = (|| {
-                unsafe {
-                    // 打开剪贴板
-                    if OpenClipboard(null_mut()) == 0 {
-                        return Err("打开剪贴板失败".to_string());
-                    }
-
-                    // 枚举所有格式，打印调试信息
-                    let mut fmt: u32 = 0;
-                    loop {
-                        fmt = EnumClipboardFormats(fmt);
-                        if fmt == 0 { break; }
-                        let mut name_buf = [0u16; 256];
-                        let len = GetClipboardFormatNameW(fmt, name_buf.as_mut_ptr(), 255);
-                        let name = if len > 0 {
-                            String::from_utf16_lossy(&name_buf[..len as usize])
-                        } else {
-                            match fmt {
-                                2 => "CF_BITMAP".into(),
-                                8 => "CF_DIB".into(),
-                                15 => "CF_HDROP".into(),
-                                13 => "CF_UNICODETEXT".into(),
-                                1 => "CF_TEXT".into(),
-                                _ => format!("Format({})", fmt),
-                            }
-                        };
-
-                        let hdata = GetClipboardData(fmt);
-                        let info = if !hdata.is_null() {
-                            let sz = GlobalSize(hdata);
-                            // 如果是 CF_HDROP，读取文件路径
-                            if fmt == CF_HDROP {
-                                let count = DragQueryFileW(hdata as _, 0xFFFFFFFF, null_mut(), 0);
-                                if count > 0 {
-                                    let mut path = [0u16; MAX_PATH as usize * 4];
-                                    let plen = DragQueryFileW(hdata as _, 0, path.as_mut_ptr(), path.len() as u32);
-                                    if plen > 0 {
-                                        let path_str = String::from_utf16_lossy(&path[..plen as usize]);
-                                        format!("{} bytes, {} files, path: {}", sz, count, path_str)
-                                    } else {
-                                        format!("{} bytes, {} files", sz, count)
-                                    }
-                                } else {
-                                    format!("{} bytes", sz)
-                                }
-                            } else {
-                                format!("{} bytes", sz)
-                            }
-                        } else {
-                            "null".into()
-                        };
-
-                        eprintln!("[CLIPBOARD] Format {}: {} - {}", fmt, name, info);
-                    }
-
-                    // 读取 CF_HDROP 文件路径
-                    let hdrop = GetClipboardData(CF_HDROP);
-                    if !hdrop.is_null() {
-                        let count = DragQueryFileW(hdrop as _, 0xFFFFFFFF, null_mut(), 0);
-                        if count > 0 {
-                            let mut path = [0u16; MAX_PATH as usize * 4];
-                            let plen = DragQueryFileW(hdrop as _, 0, path.as_mut_ptr(), path.len() as u32);
-                            if plen > 0 {
-                                let path_str = String::from_utf16_lossy(&path[..plen as usize]);
-                                CloseClipboard();
-                                let file_path = Path::new(&path_str);
-                                if file_path.exists() {
-                                    let ext = file_path.extension()
-                                        .and_then(|e| e.to_str())
-                                        .unwrap_or("")
-                                        .to_lowercase();
-                                    let mime = match ext.as_str() {
-                                        "jpg" | "jpeg" => "image/jpeg",
-                                        "png" => "image/png",
-                                        "gif" => "image/gif",
-                                        "webp" => "image/webp",
-                                        "bmp" => "image/bmp",
-                                        _ => "image/png",
-                                    };
-                                    let file_data = std::fs::read(file_path)
-                                        .map_err(|e| format!("读取文件失败: {}", e))?;
-                                    return Ok(Some(format!("data:{};base64,{}", mime, STANDARD.encode(&file_data))));
-                                }
-                            }
-                        }
-                    }
-
-                    CloseClipboard();
-                    Ok::<Option<String>, String>(None)
-                }
-            })();
-
+            let result = try_read_once();
             match result {
                 Ok(Some(base64)) => return Ok(Some(base64)),
                 Ok(None) => return Ok(None),
                 Err(e) => {
-                    if e.contains("打开剪贴板失败") {
-                        // 剪贴板被占用，等待重试
-                        if attempt < 9 {
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                            continue;
-                        }
+                    if e.to_lowercase().contains("no image") || e.to_lowercase().contains("content not available") {
+                        return Ok(None);
                     }
-                    return Err(e);
+                    if attempt < 9 {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -323,6 +223,70 @@ fn read_clipboard_image() -> Result<Option<String>, String> {
     {
         Ok(None)
     }
+}
+
+#[cfg(target_os = "windows")]
+fn try_read_once() -> Result<Option<String>, String> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use clipboard_win::{Clipboard, formats, is_format_avail, raw};
+    use image::ImageDecoder;
+    use image::ImageEncoder;
+
+    let _clip = Clipboard::new().map_err(|e| e.to_string())?;
+
+    // 方法一：尝试读取 PNG 注册格式（PixPin 可能提供）
+    if let Some(png_fmt) = clipboard_win::register_format("PNG") {
+        if is_format_avail(png_fmt.get()) {
+            let mut data = Vec::new();
+            if raw::get_vec(png_fmt.get(), &mut data).is_ok() && !data.is_empty() {
+                return Ok(Some(format!("data:image/png;base64,{}", STANDARD.encode(&data))));
+            }
+        }
+    }
+
+    // 方法二：尝试 CF_DIBV5（格式 17）
+    if is_format_avail(formats::CF_DIBV5) {
+        let mut data = Vec::new();
+        if raw::get_vec(formats::CF_DIBV5, &mut data).is_ok() && !data.is_empty() && data.len() >= 124 {
+            if let Ok(decoder) = image::codecs::bmp::BmpDecoder::new_without_file_header(std::io::Cursor::new(&data)) {
+                let (width, height) = decoder.dimensions();
+                let img = image::DynamicImage::from_decoder(decoder);
+                if let Ok(img) = img {
+                    let rgba = img.into_rgba8();
+                    let mut png_buf = Vec::new();
+                    if image::codecs::png::PngEncoder::new(&mut png_buf)
+                        .write_image(&rgba, width, height, image::ExtendedColorType::Rgba8)
+                        .is_ok()
+                    {
+                        return Ok(Some(STANDARD.encode(&png_buf)));
+                    }
+                }
+            }
+        }
+    }
+
+    // 方法三：尝试 CF_DIB（格式 8）
+    if is_format_avail(formats::CF_DIB) {
+        let mut data = Vec::new();
+        if raw::get_vec(formats::CF_DIB, &mut data).is_ok() && !data.is_empty() && data.len() >= 40 {
+            if let Ok(decoder) = image::codecs::bmp::BmpDecoder::new_without_file_header(std::io::Cursor::new(&data)) {
+                let (width, height) = decoder.dimensions();
+                let img = image::DynamicImage::from_decoder(decoder);
+                if let Ok(img) = img {
+                    let rgba = img.into_rgba8();
+                    let mut png_buf = Vec::new();
+                    if image::codecs::png::PngEncoder::new(&mut png_buf)
+                        .write_image(&rgba, width, height, image::ExtendedColorType::Rgba8)
+                        .is_ok()
+                    {
+                        return Ok(Some(STANDARD.encode(&png_buf)));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 /// 设置系统托盘菜单

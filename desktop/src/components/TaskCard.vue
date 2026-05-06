@@ -374,12 +374,36 @@ async function listenForFocus() {
 // 从剪贴板读取图片并保存
 async function readClipboardImage() {
   try {
+    // 用 Tauri clipboard-manager 插件读取图片
+    const { invoke } = await import('@tauri-apps/api/core');
+    // 使用 tauri-plugin-clipboard-manager 的 read_image 命令
+    const result = await invoke<{ base64?: string } | string>('plugin:clipboard-manager|read_image');
+    if (result) {
+      let base64Data = '';
+      if (typeof result === 'string') {
+        base64Data = result;
+      } else if (result.base64) {
+        base64Data = result.base64;
+      }
+      if (base64Data) {
+        emit('updateThumbnail', props.task, `data:image/png;base64,${base64Data}`);
+        return;
+      }
+    }
+    console.log('clipboard-manager 返回空数据，尝试后端读取');
+  } catch (e) {
+    console.log('clipboard-manager 读取失败:', e, '尝试后端读取');
+  }
+
+  // 回退：用后端读取
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
     const base64 = await invoke<string | null>('read_clipboard_image');
     if (base64) {
       emit('updateThumbnail', props.task, base64);
     }
   } catch (e) {
-    console.error('读取剪贴板失败:', e);
+    console.error('后端读取剪贴板失败:', e);
   }
 }
 
