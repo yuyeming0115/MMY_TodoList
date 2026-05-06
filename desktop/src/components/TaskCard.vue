@@ -11,8 +11,12 @@ import {
   CalendarOutline as CalendarIcon,
   TimeOutline as ClockIcon,
   PinOutline as PinOutlineIcon,
-  Pin as PinIcon
+  Pin as PinIcon,
+  ImageOutline as ImageIcon
 } from '@vicons/ionicons5';
+import { open as openFileDialog, open as openDialog } from '@tauri-apps/plugin-dialog';
+import { readFile, exists } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 import type { Task, Category } from '../types';
 
 const props = defineProps<{
@@ -32,7 +36,12 @@ const emit = defineEmits<{
   (e: 'updateDueDate', task: Task, date: number | undefined): void;
   (e: 'updateTitle', task: Task, title: string): void;
   (e: 'updateDescription', task: Task, description: string | undefined): void;
+  (e: 'updateThumbnail', task: Task, thumbnail: string | undefined): void;
 }>();
+
+// 截图提示状态
+const screenshotHint = ref(false);
+const screenshotHintText = ref('');
 
 const isDone = computed(() => props.task.status === 'done');
 
@@ -74,12 +83,17 @@ function cancelEdit() {
 // 描述编辑状态
 const isEditingDesc = ref(false);
 const editDescValue = ref('');
-const descInputRef = ref<HTMLInputElement | null>(null);
+const descInputRef = ref<HTMLTextAreaElement | null>(null);
 
 // 开始编辑描述
 function startEditDesc() {
   isEditingDesc.value = true;
-  editDescValue.value = props.task.description || '';
+  // 如果没有描述，初始化第一行编号
+  if (!props.task.description) {
+    editDescValue.value = '1、';
+  } else {
+    editDescValue.value = props.task.description;
+  }
   nextTick(() => {
     descInputRef.value?.focus();
   });
@@ -96,6 +110,38 @@ function saveDesc() {
 function cancelDescEdit() {
   isEditingDesc.value = false;
   editDescValue.value = '';
+}
+
+// 处理描述输入，自动添加编号
+function handleDescInput(e: Event) {
+  const textarea = e.target as HTMLTextAreaElement;
+  const value = textarea.value;
+  const lines = value.split('\n');
+
+  // 检查每行是否有编号，如果没有则添加
+  const processedLines = lines.map((line, index) => {
+    // 如果行是空的，保持空行
+    if (line.trim() === '') return line;
+    // 如果行已经有编号格式（如 "1、" "2、"），保持原样
+    if (/^\d+、/.test(line)) return line;
+    // 否则添加编号
+    return `${index + 1}、${line.replace(/^\d+、/, '')}`;
+  });
+
+  const newValue = processedLines.join('\n');
+  if (newValue !== value) {
+    editDescValue.value = newValue;
+  }
+}
+
+// 按下回车时，在新行添加下一个编号
+function handleDescKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const lines = editDescValue.value.split('\n');
+    const nextNum = lines.length + 1;
+    editDescValue.value += `\n${nextNum}、`;
+  }
 }
 
 // 优先级星级 (1=高=3星, 2=中=2星, 3=低=1星)
@@ -173,6 +219,22 @@ const contextMenuOptions = computed(() => {
       icon: () => h(NIcon, { component: EditIcon, size: 16 })
     },
     {
+      label: '选择图片',
+      key: 'image',
+      icon: () => h(NIcon, { component: ImageIcon, size: 16 })
+    },
+    {
+      label: '截图存为缩略图',
+      key: 'screenshot',
+      icon: () => h(NIcon, { component: ImageIcon, size: 16 })
+    },
+    {
+      label: props.task.thumbnailBase64 ? '清除图片' : '',
+      key: 'clearImage',
+      icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }),
+      show: !!props.task.thumbnailBase64
+    },
+    {
       label: '删除',
       key: 'delete',
       icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } })
@@ -202,12 +264,132 @@ function handleMenuSelect(key: string) {
     emit('edit', props.task);
   } else if (key === 'delete') {
     emit('delete', props.task.id);
+  } else if (key === 'image') {
+    selectImage();
+  } else if (key === 'screenshot') {
+    takeScreenshot();
+  } else if (key === 'clearImage') {
+    emit('updateThumbnail', props.task, undefined);
   } else if (key.startsWith('cat-')) {
     const categoryId = key.slice(4);
     if (categoryId !== props.task.categoryId) {
       emit('updateCategory', props.task, categoryId);
     }
   }
+}
+
+// 选择图片作为参考图
+async function selectImage() {
+  try {
+    const selected = await openFileDialog({
+      multiple: false,
+      filters: [{
+        name: '图片',
+        extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']
+      }]
+    });
+    if (selected) {
+      const fileData = await readFile(selected as string);
+      const base64 = uint8ArrayToBase64(fileData);
+      emit('updateThumbnail', props.task, base64);
+    }
+  } catch (e) {
+    console.error('选择图片失败:', e);
+  }
+}
+
+// 启动截图并保存为缩略图
+async function takeScreenshot() {
+  let pixpinPath = '';
+
+  // 优先从运行中的进程查找 Pixpin
+  try {
+    const result = await invoke<string | null>('find_pixpin_path');
+    if (result) {
+      pixpinPath = result;
+    }
+  } catch { /* ignore */ }
+
+  // 如果进程没找到，尝试常见安装路径
+  if (!pixpinPath) {
+    const pixpinPaths = [
+      'C:\\Program Files\\Pixpin\\PixPin.exe',
+      'C:\\Program Files (x86)\\Pixpin\\PixPin.exe',
+    ];
+    for (const p of pixpinPaths) {
+      try {
+        if (await exists(p)) {
+          pixpinPath = p;
+          break;
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  if (pixpinPath) {
+    // 显示提示
+    screenshotHintText.value = '请按 Pixpin 快捷键，或 Win+Shift+S 截图，完成后自动保存';
+    screenshotHint.value = true;
+
+    // 用 Rust 后端启动 Pixpin，绕过 shell scope 限制
+    await invoke('launch_pixpin', { pixpinPath });
+
+    // 监听窗口焦点变化，截图完成后回到窗口时读取剪贴板
+    listenForFocus();
+  } else {
+    // 没有 Pixpin，提示手动截图
+    screenshotHintText.value = '请按 Win+Shift+S 截图，完成后自动保存';
+    screenshotHint.value = true;
+    listenForFocus();
+  }
+}
+
+// 监听窗口焦点变化
+async function listenForFocus() {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  const appWindow = getCurrentWindow();
+
+  // 窗口重新获得焦点时读取剪贴板
+  const unlistenFocus = await appWindow.onFocusChanged((event) => {
+    if (event.payload) {
+      console.log('窗口重新获得焦点，准备读取剪贴板');
+      setTimeout(() => {
+        readClipboardImage();
+        screenshotHint.value = false;
+      }, 300);
+      unlistenFocus();
+    }
+  });
+
+  // 兜底：5 秒后无论如何都尝试读取一次
+  setTimeout(() => {
+    if (screenshotHint.value) {
+      console.log('超时兜底，尝试读取剪贴板');
+      readClipboardImage();
+      screenshotHint.value = false;
+    }
+  }, 5000);
+}
+
+// 从剪贴板读取图片并保存
+async function readClipboardImage() {
+  try {
+    const base64 = await invoke<string | null>('read_clipboard_image');
+    if (base64) {
+      emit('updateThumbnail', props.task, base64);
+    }
+  } catch (e) {
+    console.error('读取剪贴板失败:', e);
+  }
+}
+
+// Uint8Array 转 Base64
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
 // 展开/折叠状态
@@ -245,6 +427,11 @@ function handleToggleStatus() {
     @select="handleMenuSelect"
     @clickoutside="showContextMenu = false"
   />
+
+  <!-- 截图提示 -->
+  <div v-if="screenshotHint" class="screenshot-hint">
+    {{ screenshotHintText }}
+  </div>
   <div
     class="simple-card"
     :class="{ done: isDone, expanded: isExpanded, pinned: props.task.isPinned }"
@@ -354,23 +541,25 @@ function handleToggleStatus() {
           <NIcon :component="ExpandIcon" size="14" />
         </span>
       </div>
-      <!-- 描述（可点击编辑） -->
+      <!-- 描述（可点击编辑，支持多行） -->
       <div
         v-if="props.task.description || isEditingDesc"
         class="task-desc"
         :class="{ expanded: isExpanded }"
         @click="startEditDesc"
       >
-        <span v-if="!isEditingDesc">{{ props.task.description }}</span>
-        <input
+        <div v-if="!isEditingDesc" class="desc-content">{{ props.task.description }}</div>
+        <textarea
           v-else
           ref="descInputRef"
           v-model="editDescValue"
           class="desc-input"
           placeholder="添加描述..."
+          rows="3"
           @blur="saveDesc"
-          @keyup.enter="saveDesc"
+          @keydown="handleDescKeydown"
           @keyup.escape="cancelDescEdit"
+          @input="handleDescInput"
           @click.stop
         />
       </div>
@@ -657,9 +846,14 @@ html.dark .task-desc {
 }
 
 .task-desc.expanded {
-  white-space: normal;
-  max-height: 60px;
+  white-space: pre-wrap;
+  max-height: calc(20 * 18px); /* 限制20行 */
   overflow-y: auto;
+}
+
+.desc-content {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .task-desc-empty {
@@ -694,6 +888,8 @@ html.dark .task-desc-empty:hover {
   width: 100%;
   padding: 0;
   font-family: inherit;
+  resize: none;
+  line-height: 18px;
 }
 
 html.dark .desc-input {
@@ -702,5 +898,29 @@ html.dark .desc-input {
 
 .desc-input::placeholder {
   color: #aaa;
+}
+
+.screenshot-hint {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 9999;
+  pointer-events: none;
+  animation: fadeIn 0.2s ease;
+}
+
+html.dark .screenshot-hint {
+  background: rgba(50, 50, 50, 0.9);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 </style>

@@ -40,6 +40,10 @@ export const useSettingsStore = defineStore('settings', () => {
     update({ windowWidth: width, windowHeight: height });
   }
 
+  function setWindowPosition(x: number, y: number) {
+    update({ windowX: x, windowY: y });
+  }
+
   return {
     settings,
     load,
@@ -48,6 +52,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setLanguage,
     setHideCompleted,
     setLaunchAtStartup,
-    setWindowSize
+    setWindowSize,
+    setWindowPosition
   };
 });

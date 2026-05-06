@@ -80,6 +80,8 @@ pub struct AppSettings {
     pub launch_at_startup: bool,
     pub window_width: Option<i32>,
     pub window_height: Option<i32>,
+    pub window_x: Option<i32>,
+    pub window_y: Option<i32>,
 }
 
 impl Default for AppSettings {
@@ -91,6 +93,8 @@ impl Default for AppSettings {
             launch_at_startup: false,
             window_width: None,
             window_height: None,
+            window_x: None,
+            window_y: None,
         }
     }
 }

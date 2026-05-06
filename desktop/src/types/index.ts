@@ -31,6 +31,8 @@ export interface AppSettings {
   launchAtStartup: boolean;
   windowWidth?: number;
   windowHeight?: number;
+  windowX?: number;
+  windowY?: number;
 }
 
 export interface ExportData {

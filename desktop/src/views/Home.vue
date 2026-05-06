@@ -7,10 +7,12 @@ import {
 import {
   AddOutline as AddIcon, SettingsOutline as SettingsIcon,
   SunnyOutline as LightIcon, MoonOutline as DarkIcon,
-  FolderOutline as FolderIcon
+  FolderOutline as FolderIcon, PinOutline as PinIcon,
+  CloseOutline as CloseIcon, RemoveOutline as MinusIcon,
+  ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon
 } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
-import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { useCategoryStore } from '../stores/categoryStore';
 import { useTaskStore } from '../stores/taskStore';
@@ -23,10 +25,59 @@ import TaskCard from '../components/TaskCard.vue';
 import TaskFormModal from '../components/TaskFormModal.vue';
 import type { Task } from '../types';
 
+// 检测是否为 Windows
+const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+
+// 窗口最大化状态
+const isMaximized = ref(false);
+// 最大化前的窗口尺寸
+const previousSize = ref<{ width: number; height: number } | null>(null);
+
+async function checkMaximized() {
+  try {
+    isMaximized.value = await appWindow.isMaximized();
+  } catch (_) {}
+}
+
+// 切换最大化/还原
+async function toggleMaximize() {
+  try {
+    if (isMaximized.value) {
+      // 还原到之前的尺寸
+      if (previousSize.value) {
+        await appWindow.setSize(new LogicalSize(previousSize.value.width, previousSize.value.height));
+      }
+      isMaximized.value = false;
+    } else {
+      // 保存当前尺寸
+      const size = await appWindow.innerSize();
+      previousSize.value = { width: size.width, height: size.height };
+      // 最大化
+      await appWindow.maximize();
+      isMaximized.value = true;
+    }
+  } catch (e) {
+    console.error('切换最大化失败:', e);
+  }
+}
+
 const categoryStore = useCategoryStore();
 const taskStore = useTaskStore();
 const settingsStore = useSettingsStore();
 const appWindow = getCurrentWindow();
+
+// 窗口置顶状态
+const isPinned = ref(false);
+
+// 切换窗口置顶
+async function togglePin() {
+  try {
+    isPinned.value = !isPinned.value;
+    await appWindow.setAlwaysOnTop(isPinned.value);
+  } catch (e) {
+    console.error('置顶失败:', e);
+  }
+}
 
 // 页面切换
 const currentPage = ref<'main' | 'category' | 'settings'>('main');
@@ -107,23 +158,33 @@ onMounted(async () => {
     settingsStore.load()
   ]);
 
-  // 应用保存的窗口尺寸
-  applyWindowSize();
+  // 应用保存的窗口尺寸和位置
+  applyWindowState();
 
-  // 监听窗口尺寸变化
+  // 检查窗口最大化状态
+  checkMaximized();
+
+  // 监听窗口尺寸和位置变化
   await setupResizeListener();
+  await setupMoveListener();
 });
 
 onUnmounted(() => {
   removeResizeListener();
+  removeMoveListener();
 });
 
-// 应用保存的窗口尺寸
-async function applyWindowSize() {
-  const { windowWidth, windowHeight } = settingsStore.settings;
+// 应用保存的窗口尺寸和位置
+async function applyWindowState() {
+  const { windowWidth, windowHeight, windowX, windowY } = settingsStore.settings;
   if (windowWidth && windowHeight) {
     try {
       await appWindow.setSize(new LogicalSize(windowWidth, windowHeight));
+    } catch (_) {}
+  }
+  if (windowX && windowY) {
+    try {
+      await appWindow.setPosition(new LogicalPosition(windowX, windowY));
     } catch (_) {}
   }
 }
@@ -140,8 +201,10 @@ async function handleResize() {
     try {
       const size = await appWindow.innerSize();
       settingsStore.setWindowSize(size.width, size.height);
+      // 更新最大化状态
+      checkMaximized();
     } catch (_) {}
-  }, 500); // 500ms 防抖
+  }, 500);
 }
 
 async function setupResizeListener() {
@@ -156,6 +219,37 @@ function removeResizeListener() {
   }
   if (resizeUnlisten) {
     resizeUnlisten();
+  }
+}
+
+// 窗口位置变化监听（带防抖）
+let moveTimeout: ReturnType<typeof setTimeout> | null = null;
+let moveUnlisten: (() => void) | null = null;
+
+async function handleMove() {
+  if (moveTimeout) {
+    clearTimeout(moveTimeout);
+  }
+  moveTimeout = setTimeout(async () => {
+    try {
+      const position = await appWindow.outerPosition();
+      settingsStore.setWindowPosition(position.x, position.y);
+    } catch (_) {}
+  }, 500);
+}
+
+async function setupMoveListener() {
+  try {
+    moveUnlisten = await appWindow.onMoved(handleMove);
+  } catch (_) {}
+}
+
+function removeMoveListener() {
+  if (moveTimeout) {
+    clearTimeout(moveTimeout);
+  }
+  if (moveUnlisten) {
+    moveUnlisten();
   }
 }
 
@@ -259,6 +353,12 @@ function updateTaskDescription(task: Task, description: string | undefined) {
   taskStore.update(task);
 }
 
+// 更新任务缩略图
+function updateTaskThumbnail(task: Task, thumbnailBase64: string | undefined) {
+  task.thumbnailBase64 = thumbnailBase64;
+  taskStore.update(task);
+}
+
 // 打开分类管理
 function openCategoryPage() {
   currentPage.value = 'category';
@@ -312,10 +412,37 @@ const themeOverrides = {
         <div class="fixed-header" @mousedown="startWindowDrag">
           <!-- 标题栏（可拖拽区域） -->
           <div class="header" data-tauri-drag-region>
-            <div class="window-controls">
+            <!-- 置顶按钮 -->
+            <div class="pin-control">
+              <NButton quaternary size="tiny" @click="togglePin" :type="isPinned ? 'primary' : 'default'" round>
+                <template #icon>
+                  <NIcon :component="PinIcon" :size="14" />
+                </template>
+              </NButton>
+            </div>
+            <!-- Mac 红黄绿按钮 -->
+            <div class="window-controls mac-controls" v-if="!isWindows">
               <span class="dot close" @click="hideToTray()" />
               <span class="dot minimize" @click="appWindow.minimize()" />
               <span class="dot maximize" @click="appWindow.maximize()" />
+            </div>
+            <!-- Windows 标准按钮 -->
+            <div class="window-controls win-controls" v-if="isWindows">
+              <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
+                <template #icon>
+                  <NIcon :component="MinusIcon" :size="12" />
+                </template>
+              </NButton>
+              <NButton quaternary size="tiny" class="win-btn" @click="toggleMaximize()">
+                <template #icon>
+                  <NIcon :component="isMaximized ? RestoreIcon : MaximizeIcon" :size="12" />
+                </template>
+              </NButton>
+              <NButton quaternary size="tiny" class="win-btn close-btn" @click="hideToTray()">
+                <template #icon>
+                  <NIcon :component="CloseIcon" :size="12" />
+                </template>
+              </NButton>
             </div>
             <div class="tabs-wrapper">
               <CategoryTabs />
@@ -383,6 +510,7 @@ const themeOverrides = {
                   @update-due-date="updateTaskDueDate"
                   @update-title="updateTaskTitle"
                   @update-description="updateTaskDescription"
+                  @update-thumbnail="updateTaskThumbnail"
                 />
               </div>
             </template>
@@ -462,15 +590,15 @@ html.dark .app-container {
 /* 固定顶部区域 */
 .fixed-header {
   flex-shrink: 0;
-  background: #f5f5f5;
+  background: #f5f5f5 !important;
   border-bottom: 1px solid #e0e0e0;
   margin: -12px -12px 0 -12px;
   padding: 12px 12px 0 12px;
 }
 
 html.dark .fixed-header {
-  background: #1a1a1a;
-  border-bottom-color: #333;
+  background: #1a1a1a !important;
+  border-bottom-color: #333 !important;
 }
 
 .header {
@@ -478,14 +606,29 @@ html.dark .fixed-header {
   align-items: center;
   gap: 12px;
   padding-bottom: 8px;
+  background: inherit;
+}
+
+html.dark .header {
+  background: #1a1a1a;
 }
 
 /* 标题栏内的交互控件不可拖拽 */
+.pin-control,
 .window-controls,
 .tabs-wrapper,
 .header .n-space {
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+.pin-control {
+  display: flex;
+  align-items: center;
+}
+
+.pin-control .n-button {
+  padding: 0 6px;
 }
 
 .window-controls {
@@ -503,6 +646,31 @@ html.dark .fixed-header {
 .dot.close { background: #FF5F57; }
 .dot.minimize { background: #FFBD2E; }
 .dot.maximize { background: #28C840; }
+
+/* Windows 按钮样式 */
+.win-controls {
+  gap: 2px;
+}
+
+.win-controls .win-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 0;
+}
+
+.win-controls .win-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+html.dark .win-controls .win-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.win-controls .close-btn:hover {
+  background: #e81123 !important;
+  color: #fff !important;
+}
 
 .tabs-wrapper {
   flex: 1;

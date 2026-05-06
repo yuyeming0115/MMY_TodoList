@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "MMY Todo",
+        "width": 400,
+        "height": 600,
+        "minWidth": 300,
+        "minHeight": 400,
+        "resizable": true,
+        "decorations": false,
+        "transparent": false,
+        "shadow": true
+      }
+    ]
+  }
+}
