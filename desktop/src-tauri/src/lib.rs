@@ -219,7 +219,34 @@ fn read_clipboard_image() -> Result<Option<String>, String> {
         Ok(None)
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        use arboard::Clipboard;
+        use image::ImageEncoder;
+
+        let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {}", e))?;
+
+        if let Ok(img_data) = clipboard.get_image() {
+            // arboard 返回的是 RGBA 数据，Cow<[u8]> 类型
+            let width = img_data.width as u32;
+            let height = img_data.height as u32;
+            // 直接使用 Cow<[u8]> 的引用
+            let rgba_bytes: &[u8] = &img_data.bytes;
+
+            // 转换为 PNG 格式
+            let mut png_buf = Vec::new();
+            if image::codecs::png::PngEncoder::new(&mut png_buf)
+                .write_image(rgba_bytes, width, height, image::ExtendedColorType::Rgba8)
+                .is_ok()
+            {
+                return Ok(Some(STANDARD.encode(&png_buf)));
+            }
+        }
+        Ok(None)
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         Ok(None)
     }

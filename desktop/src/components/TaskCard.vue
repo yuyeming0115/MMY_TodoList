@@ -300,6 +300,19 @@ async function selectImage() {
 
 // 启动截图并保存为缩略图
 async function takeScreenshot() {
+  // 判断操作系统
+  const platform = navigator.platform.toLowerCase();
+  const isMac = platform.includes('mac');
+
+  if (isMac) {
+    // Mac 平台：提示手动截图
+    screenshotHintText.value = '请按 Cmd+Shift+4 截图（按住 Control 保存到剪贴板），完成后回到此窗口自动保存';
+    screenshotHint.value = true;
+    listenForFocus();
+    return;
+  }
+
+  // Windows 平台：原有逻辑
   let pixpinPath = '';
 
   // 优先从运行中的进程查找 Pixpin
