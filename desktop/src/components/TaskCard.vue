@@ -14,7 +14,7 @@ import {
   Pin as PinIcon,
   ImageOutline as ImageIcon
 } from '@vicons/ionicons5';
-import { open as openFileDialog, open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { readFile, exists } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import type { Task, Category } from '../types';
