@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {
   NForm, NFormItem, NSelect, NSwitch, NSpace,
-  NButton, NDivider, NIcon, NText, NSlider, NCheckbox
+  NButton, NDivider, NIcon, NText, NSlider
 } from 'naive-ui';
 import {
   DownloadOutline as ExportIcon, CloudUploadOutline as ImportIcon,

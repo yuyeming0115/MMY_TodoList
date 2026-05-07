@@ -95,21 +95,24 @@ impl Database {
             [],
         )?;
 
-        // 初始化默认分类：家务、工作
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64;
+        // 初始化默认分类（仅当数据库中没有任何分类时）
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM categories", [], |r| r.get(0))?;
+        if count == 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
 
-        conn.execute(
-            "INSERT OR IGNORE INTO categories (id, name, color, sort_order, created_at) VALUES ('default-home', '家务', '#28C840', 0, ?1)",
-            [now],
-        )?;
+            conn.execute(
+                "INSERT INTO categories (id, name, color, sort_order, created_at) VALUES ('default-home', '家务', '#28C840', 0, ?1)",
+                [now],
+            )?;
 
-        conn.execute(
-            "INSERT OR IGNORE INTO categories (id, name, color, sort_order, created_at) VALUES ('default-work', '工作', '#4A90D9', 1, ?1)",
-            [now],
-        )?;
+            conn.execute(
+                "INSERT INTO categories (id, name, color, sort_order, created_at) VALUES ('default-work', '工作', '#4A90D9', 1, ?1)",
+                [now],
+            )?;
+        }
 
         Ok(Self { conn: Mutex::new(conn) })
     }

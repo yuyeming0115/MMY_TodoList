@@ -12,6 +12,7 @@ import {
 } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
+import { availableMonitors } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { useCategoryStore } from '../stores/categoryStore';
 import { useTaskStore } from '../stores/taskStore';
@@ -225,6 +226,49 @@ function removeResizeListener() {
 let moveTimeout: ReturnType<typeof setTimeout> | null = null;
 let moveUnlisten: (() => void) | null = null;
 
+// 吸附阈值（px）
+const SNAP_THRESHOLD = 30;
+
+// 窗口边缘吸附
+async function snapToEdge() {
+  try {
+    const pos = await appWindow.outerPosition();
+    const innerSize = await appWindow.innerSize();
+    const scaleFactor = await appWindow.scaleFactor();
+    const outerWidth = innerSize.width / scaleFactor;
+
+    // 获取主显示器尺寸
+    const monitors = await availableMonitors();
+    if (monitors.length === 0) return;
+    const primary = monitors[0];
+    const screenW = primary.size.width;
+
+    let newX = pos.x;
+    let newY = pos.y;
+    let needSnap = false;
+
+    // 左边缘吸附
+    if (Math.abs(pos.x) < SNAP_THRESHOLD) {
+      newX = 0;
+      needSnap = true;
+    }
+    // 右边缘吸附
+    if (Math.abs(pos.x + outerWidth - screenW) < SNAP_THRESHOLD) {
+      newX = screenW - outerWidth;
+      needSnap = true;
+    }
+    // 上边缘吸附
+    if (Math.abs(pos.y) < SNAP_THRESHOLD) {
+      newY = 0;
+      needSnap = true;
+    }
+
+    if (needSnap) {
+      await appWindow.setPosition(new LogicalPosition(newX, newY));
+    }
+  } catch (_) {}
+}
+
 async function handleMove() {
   if (moveTimeout) {
     clearTimeout(moveTimeout);
@@ -234,6 +278,8 @@ async function handleMove() {
       const position = await appWindow.outerPosition();
       settingsStore.setWindowPosition(position.x, position.y);
     } catch (_) {}
+    // 移动结束后检测边缘吸附
+    await snapToEdge();
   }, 500);
 }
 
@@ -714,6 +760,7 @@ html.dark .win-controls .win-btn:hover {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  padding: 8px 0;
 }
 
 /* 滚动条默认隐藏，hover/滚动时显示 */
