@@ -30,6 +30,7 @@ const props = defineProps<{
   categoryColor?: string;
   categories: Category[];
   isEditingTitle?: boolean;
+  compact?: boolean;
 }>();
 const emit = defineEmits<{
   (e: 'edit', task: Task): void;
@@ -159,7 +160,16 @@ function handleDescKeydown(e: KeyboardEvent) {
 }
 
 // 优先级星级 (1=高=3星, 2=中=2星, 3=低=1星)
+// 星标优先级显示（非精简模式使用）
 const priorityStars = computed(() => props.task.priority);
+
+// 精简模式下根据优先级返回底色 class
+const priorityBgClass = computed(() => {
+  if (!props.compact) return '';
+  if (props.task.priority === 1) return 'priority-high-bg'; // 高优先级 - 暖色
+  if (props.task.priority === 2) return 'priority-medium-bg'; // 中优先级 - 蓝色
+  return 'priority-low-bg'; // 低优先级 - 默认
+});
 
 // 点击星星设置优先级
 function handleSetPriority(starIndex: number) {
@@ -570,13 +580,14 @@ function handleToggleStatus() {
   </div>
   <div
     class="simple-card"
-    :class="{ done: isDone, expanded: isExpanded }"
-    :style="{ borderLeftColor: categoryColor || 'transparent', borderLeftWidth: categoryColor ? '3px' : '0' }"
+    :class="[isDone && 'done', isExpanded && 'expanded', props.compact && 'compact', props.compact && priorityBgClass]"
+    :style="{ borderLeftColor: categoryColor || 'transparent', borderLeftWidth: (categoryColor && !props.compact) ? '3px' : '0' }"
     @click="toggleExpand"
     @contextmenu="handleContextMenu"
   >
     <!-- 完成状态复选框 -->
     <NCheckbox
+      v-if="!props.compact"
       :checked="isDone"
       size="small"
       @update:checked="handleToggleStatus"
@@ -584,7 +595,7 @@ function handleToggleStatus() {
     />
 
     <!-- 缩略图（如果有） -->
-    <div v-if="props.task.thumbnailBase64" class="thumbnail-wrapper" @click.stop="openImagePreview">
+    <div v-if="props.task.thumbnailBase64 && !props.compact" class="thumbnail-wrapper" @click.stop="openImagePreview">
       <img
         :src="`data:image/jpeg;base64,${props.task.thumbnailBase64}`"
         class="thumbnail"
@@ -610,7 +621,7 @@ function handleToggleStatus() {
           @keyup.escape="cancelEdit"
         />
         <!-- 右侧区域：星标 + 时间 -->
-        <span class="right-area">
+        <span class="right-area" v-if="!props.compact">
           <!-- 星标优先级（可点击设置） -->
           <span class="priority-stars">
             <NIcon
@@ -667,8 +678,12 @@ function handleToggleStatus() {
             </span>
           </span>
         </span>
+        <!-- 精简模式：只显示倒计时 -->
+        <span v-if="props.compact && countdownText" class="compact-countdown" :class="countdownClass">
+          {{ countdownText }}
+        </span>
         <!-- 展开/折叠提示图标 -->
-        <span v-if="needsExpand" class="expand-icon" :class="{ expanded: isExpanded }">
+        <span v-if="needsExpand && !props.compact" class="expand-icon" :class="{ expanded: isExpanded }">
           <NIcon :component="ExpandIcon" size="14" />
         </span>
       </div>
@@ -677,6 +692,7 @@ function handleToggleStatus() {
         v-if="props.task.description || isEditingDesc"
         class="task-desc"
         :class="{ expanded: isExpanded }"
+        v-show="!props.compact"
       >
         <div v-if="!isEditingDesc" class="desc-content" @click="startEditDesc">{{ props.task.description }}</div>
         <textarea
@@ -694,7 +710,7 @@ function handleToggleStatus() {
         />
       </div>
       <!-- 添加描述提示（没有描述时显示） -->
-      <div v-else class="task-desc-empty" @click="startEditDesc">
+      <div v-else class="task-desc-empty" @click="startEditDesc" v-show="!props.compact">
         点击添加描述...
       </div>
     </div>
@@ -772,6 +788,119 @@ html.dark .simple-card:hover {
 
 .simple-card.done {
   opacity: 0.5;
+}
+
+/* 精简模式样式 */
+.simple-card.compact {
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(74, 144, 217, 0.2);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+html.dark .simple-card.compact {
+  background: rgba(42, 42, 42, 0.95);
+  border-color: rgba(91, 164, 245, 0.25);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+.simple-card.compact .task-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+html.dark .simple-card.compact .task-title {
+  color: #f0f0f0;
+}
+
+.simple-card.compact .compact-countdown {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.simple-card.compact .compact-countdown.normal {
+  background: #e8f5e9;
+  color: #28C840;
+}
+
+.simple-card.compact .compact-countdown.soon {
+  background: rgba(224, 82, 82, 0.12);
+  color: #E05252;
+}
+
+.simple-card.compact .compact-countdown.urgent {
+  background: #ffebee;
+  color: #E05252;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.simple-card.compact .compact-countdown.overdue {
+  background: #f5f5f5;
+  color: #999;
+}
+
+html.dark .simple-card.compact .compact-countdown.normal {
+  background: rgba(40, 200, 64, 0.2);
+  color: #4ade80;
+}
+
+html.dark .simple-card.compact .compact-countdown.soon {
+  background: rgba(224, 82, 82, 0.25);
+  color: #f87171;
+}
+
+html.dark .simple-card.compact .compact-countdown.urgent {
+  background: rgba(224, 82, 82, 0.2);
+  color: #f87171;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+html.dark .simple-card.compact .compact-countdown.overdue {
+  background: rgba(100, 100, 100, 0.2);
+  color: #888;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 精简模式 - 优先级底色 */
+.simple-card.compact.priority-high-bg {
+  background: rgba(255, 248, 225, 0.95);
+  border-color: rgba(255, 183, 77, 0.4);
+}
+
+html.dark .simple-card.compact.priority-high-bg {
+  background: rgba(62, 39, 35, 0.95);
+  border-color: rgba(255, 183, 77, 0.35);
+}
+
+.simple-card.compact.priority-medium-bg {
+  background: rgba(227, 242, 253, 0.95);
+  border-color: rgba(100, 181, 246, 0.4);
+}
+
+html.dark .simple-card.compact.priority-medium-bg {
+  background: rgba(25, 40, 60, 0.95);
+  border-color: rgba(100, 181, 246, 0.35);
+}
+
+.simple-card.compact.priority-low-bg {
+  background: rgba(232, 245, 233, 0.95);
+  border-color: rgba(102, 187, 106, 0.4);
+}
+
+html.dark .simple-card.compact.priority-low-bg {
+  background: rgba(27, 45, 35, 0.95);
+  border-color: rgba(102, 187, 106, 0.35);
 }
 
 .status-checkbox {

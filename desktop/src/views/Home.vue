@@ -70,12 +70,29 @@ const appWindow = getCurrentWindow();
 
 // 窗口置顶状态
 const isPinned = ref(false);
+// 置顶前的窗口尺寸
+const prePinSize = ref<{ width: number; height: number } | null>(null);
 
-// 切换窗口置顶
+// 精简模式下窗口尺寸
+const COMPACT_WIDTH = 320;
+
+// 切换窗口置顶 + 精简模式
 async function togglePin() {
   try {
     isPinned.value = !isPinned.value;
     await appWindow.setAlwaysOnTop(isPinned.value);
+
+    if (isPinned.value) {
+      // 进入精简模式：保存当前尺寸，缩小窗口
+      const size = await appWindow.innerSize();
+      prePinSize.value = { width: size.width, height: size.height };
+      await appWindow.setSize(new LogicalSize(COMPACT_WIDTH, 400));
+    } else {
+      // 退出精简模式：恢复之前尺寸
+      if (prePinSize.value) {
+        await appWindow.setSize(new LogicalSize(prePinSize.value.width, prePinSize.value.height));
+      }
+    }
   } catch (e) {
     console.error('置顶失败:', e);
   }
@@ -498,31 +515,34 @@ const themeOverrides = {
                 </template>
               </NButton>
             </div>
-            <div class="tabs-wrapper">
-              <CategoryTabs />
-            </div>
-            <NSpace :size="4">
-              <NButton quaternary size="tiny" @click="toggleTheme">
-                <template #icon>
-                  <NIcon :component="isDark ? LightIcon : DarkIcon" />
-                </template>
-              </NButton>
-              <NButton quaternary size="tiny" @click="openSettingsPage">
-                <template #icon>
-                  <NIcon :component="SettingsIcon" />
-                </template>
-              </NButton>
-            </NSpace>
+            <!-- 完整模式下的额外控件 -->
+            <template v-if="!isPinned">
+              <div class="tabs-wrapper">
+                <CategoryTabs />
+              </div>
+              <NSpace :size="4">
+                <NButton quaternary size="tiny" @click="toggleTheme">
+                  <template #icon>
+                    <NIcon :component="isDark ? LightIcon : DarkIcon" />
+                  </template>
+                </NButton>
+                <NButton quaternary size="tiny" @click="openSettingsPage">
+                  <template #icon>
+                    <NIcon :component="SettingsIcon" />
+                  </template>
+                </NButton>
+              </NSpace>
+            </template>
           </div>
 
           <!-- 搜索栏 -->
-          <div class="search-wrapper">
+          <div v-if="!isPinned" class="search-wrapper">
             <SearchBar />
           </div>
         </div>
 
         <!-- 任务列表（可滚动区域） -->
-        <div class="task-list" ref="taskListRef">
+        <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned }">
           <div v-if="filteredTasks.length === 0" class="empty">
             暂无任务
           </div>
@@ -549,6 +569,7 @@ const themeOverrides = {
                   :category-color="getCategoryColor(element)"
                   :categories="categoryStore.categories"
                   :is-editing-title="editingTaskId === element.id"
+                  :compact="isPinned"
                   @edit="editTask"
                   @delete="deleteTask"
                   @toggle-status="toggleTaskStatus"
@@ -567,7 +588,7 @@ const themeOverrides = {
         </div>
 
         <!-- 底部添加按钮（固定，可拖拽窗口） -->
-        <div class="footer" @mousedown="startWindowDrag">
+        <div v-if="!isPinned" class="footer" @mousedown="startWindowDrag">
           <NButton type="primary" block @click="openAddTask">
             <template #icon>
               <NIcon :component="AddIcon" />
@@ -761,6 +782,15 @@ html.dark .win-controls .win-btn:hover {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px 0;
+}
+
+/* 精简模式列表 */
+.task-list.compact-list {
+  padding: 4px 0;
+}
+
+.task-list.compact-list .task-wrapper {
+  margin-bottom: 6px;
 }
 
 /* 滚动条默认隐藏，hover/滚动时显示 */
