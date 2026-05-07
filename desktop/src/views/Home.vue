@@ -7,7 +7,6 @@ import {
 import {
   AddOutline as AddIcon, SettingsOutline as SettingsIcon,
   SunnyOutline as LightIcon, MoonOutline as DarkIcon,
-  FolderOutline as FolderIcon,
   CloseOutline as CloseIcon, RemoveOutline as MinusIcon,
   ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon
 } from '@vicons/ionicons5';
@@ -18,7 +17,6 @@ import { useCategoryStore } from '../stores/categoryStore';
 import { useTaskStore } from '../stores/taskStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import CategoryTabs from '../components/CategoryTabs.vue';
-import CategoryPage from '../components/CategoryPage.vue';
 import SettingsPage from '../components/SettingsPage.vue';
 import SearchBar from '../components/SearchBar.vue';
 import TaskCard from '../components/TaskCard.vue';
@@ -80,7 +78,7 @@ async function togglePin() {
 }
 
 // 页面切换
-const currentPage = ref<'main' | 'category' | 'settings'>('main');
+const currentPage = ref<'main' | 'settings'>('main');
 
 // 任务列表 ref
 const taskListRef = ref<HTMLElement | null>(null);
@@ -354,11 +352,6 @@ function moveTaskToTop(task: Task) {
   taskStore.update(task);
 }
 
-// 打开分类管理
-function openCategoryPage() {
-  currentPage.value = 'category';
-}
-
 // 打开设置
 function openSettingsPage() {
   currentPage.value = 'settings';
@@ -441,11 +434,6 @@ const themeOverrides = {
               <CategoryTabs />
             </div>
             <NSpace :size="4">
-              <NButton quaternary size="tiny" @click="openCategoryPage">
-                <template #icon>
-                  <NIcon :component="FolderIcon" />
-                </template>
-              </NButton>
               <NButton quaternary size="tiny" @click="toggleTheme">
                 <template #icon>
                   <NIcon :component="isDark ? LightIcon : DarkIcon" />
@@ -528,9 +516,6 @@ const themeOverrides = {
           @saved="onTaskSaved"
         />
       </div>
-
-        <!-- 分类管理页面 -->
-        <CategoryPage v-if="currentPage === 'category'" @back="goBackToMain" />
 
         <!-- 设置页面 -->
         <SettingsPage v-if="currentPage === 'settings'" @back="goBackToMain" />
