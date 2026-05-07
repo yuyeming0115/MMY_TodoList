@@ -7,7 +7,7 @@ import {
 import {
   AddOutline as AddIcon, SettingsOutline as SettingsIcon,
   SunnyOutline as LightIcon, MoonOutline as DarkIcon,
-  FolderOutline as FolderIcon, PinOutline as PinIcon,
+  FolderOutline as FolderIcon,
   CloseOutline as CloseIcon, RemoveOutline as MinusIcon,
   ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon
 } from '@vicons/ionicons5';
@@ -116,15 +116,8 @@ const filteredTasks = computed(() => {
     tasks = tasks.filter(t => t.status !== 'done');
   }
 
-  // 置顶任务优先，然后按 sortOrder 排序
-  tasks.sort((a, b) => {
-    // 置顶的排在前面
-    if (a.isPinned !== b.isPinned) {
-      return a.isPinned ? -1 : 1;
-    }
-    // 同级别按 sortOrder 排序
-    return a.sortOrder - b.sortOrder;
-  });
+  // 按 sortOrder 排序
+  tasks.sort((a, b) => a.sortOrder - b.sortOrder);
 
   return tasks;
 });
@@ -310,12 +303,6 @@ function toggleTaskStatus(task: Task) {
   taskStore.toggleStatus(task);
 }
 
-// 置顶/取消置顶任务
-function toggleTaskPin(task: Task) {
-  task.isPinned = !task.isPinned;
-  taskStore.update(task);
-}
-
 // 更新任务优先级
 function updateTaskPriority(task: Task, priority: 1 | 2 | 3) {
   task.priority = priority;
@@ -415,9 +402,7 @@ const themeOverrides = {
             <!-- 置顶按钮 -->
             <div class="pin-control">
               <NButton quaternary size="tiny" @click="togglePin" :type="isPinned ? 'primary' : 'default'" round>
-                <template #icon>
-                  <NIcon :component="PinIcon" :size="14" />
-                </template>
+                <span class="pin-emoji">📌</span>
               </NButton>
             </div>
             <!-- Mac 红黄绿按钮 -->
@@ -503,7 +488,6 @@ const themeOverrides = {
                   @edit="editTask"
                   @delete="deleteTask"
                   @toggle-status="toggleTaskStatus"
-                  @toggle-pin="toggleTaskPin"
                   @update-priority="updateTaskPriority"
                   @update-category="updateTaskCategory"
                   @update-start-date="updateTaskStartDate"
@@ -629,6 +613,19 @@ html.dark .header {
 
 .pin-control .n-button {
   padding: 0 6px;
+}
+
+.pin-control .pin-emoji {
+  font-size: 14px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+.pin-control .n-button:not(.n-button--primary-type) .pin-emoji {
+  transform: rotate(45deg);
+  opacity: 0.6;
 }
 
 .window-controls {

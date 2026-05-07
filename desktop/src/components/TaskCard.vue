@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, h, watch, nextTick } from 'vue';
-import { NIcon, NCheckbox, NDropdown, NDatePicker, NPopover } from 'naive-ui';
+import { NIcon, NCheckbox, NDropdown, NDatePicker, NPopover, NModal, NButton } from 'naive-ui';
 import {
   StarOutline as StarOutlineIcon,
   Star as StarIcon,
@@ -10,9 +10,14 @@ import {
   FolderOutline as FolderIcon,
   CalendarOutline as CalendarIcon,
   TimeOutline as ClockIcon,
-  PinOutline as PinOutlineIcon,
-  Pin as PinIcon,
-  ImageOutline as ImageIcon
+  ImageOutline as ImageIcon,
+  AddOutline as ZoomInIcon,
+  RemoveOutline as ZoomOutIcon,
+  DownloadOutline as DownloadIcon,
+  SyncOutline as ResetIcon,
+  SwapHorizontalOutline as FlipHIcon,
+  SwapVerticalOutline as FlipVIcon,
+  RefreshOutline as RotateIcon
 } from '@vicons/ionicons5';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { readFile, exists } from '@tauri-apps/plugin-fs';
@@ -29,7 +34,6 @@ const emit = defineEmits<{
   (e: 'edit', task: Task): void;
   (e: 'delete', id: string): void;
   (e: 'toggleStatus', task: Task): void;
-  (e: 'togglePin', task: Task): void;
   (e: 'updatePriority', task: Task, priority: 1 | 2 | 3): void;
   (e: 'updateCategory', task: Task, categoryId: string): void;
   (e: 'updateStartDate', task: Task, date: number | undefined): void;
@@ -85,9 +89,17 @@ const isEditingDesc = ref(false);
 const editDescValue = ref('');
 const descInputRef = ref<HTMLTextAreaElement | null>(null);
 
+// 编辑时 textarea 的动态行数（最多 20 行）
+const editRows = computed(() => {
+  if (!isEditingDesc.value || !editDescValue.value) return 3;
+  const lines = editDescValue.value.split('\n').length;
+  return Math.min(lines, 20);
+});
+
 // 开始编辑描述
 function startEditDesc() {
   isEditingDesc.value = true;
+  isExpanded.value = true;
   // 如果没有描述，初始化第一行编号
   if (!props.task.description) {
     editDescValue.value = '1、';
@@ -429,6 +441,81 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// 图片预览状态
+const showImagePreview = ref(false);
+const imageScale = ref(1);
+const imageRotate = ref(0);
+const flipH = ref(false);
+const flipV = ref(false);
+
+function openImagePreview() {
+  imageScale.value = 1;
+  imageRotate.value = 0;
+  flipH.value = false;
+  flipV.value = false;
+  showImagePreview.value = true;
+}
+
+function closeImagePreview() {
+  showImagePreview.value = false;
+}
+
+function zoomIn() {
+  imageScale.value = Math.min(imageScale.value + 0.25, 4);
+}
+
+function zoomOut() {
+  imageScale.value = Math.max(imageScale.value - 0.25, 0.25);
+}
+
+function rotateImage() {
+  imageRotate.value = (imageRotate.value + 90) % 360;
+}
+
+function flipHorizontal() {
+  flipH.value = !flipH.value;
+}
+
+function flipVertical() {
+  flipV.value = !flipV.value;
+}
+
+function resetImage() {
+  imageScale.value = 1;
+  imageRotate.value = 0;
+  flipH.value = false;
+  flipV.value = false;
+}
+
+async function downloadImage() {
+  try {
+    const { save } = await import('@tauri-apps/plugin-dialog');
+    const filePath = await save({
+      filters: [{ name: '图片', extensions: ['png'] }]
+    });
+    if (filePath) {
+      const { writeFile } = await import('@tauri-apps/plugin-fs');
+      const base64 = props.task.thumbnailBase64!.replace(/^data:image\/\w+;base64,/, '');
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      await writeFile(filePath, bytes);
+    }
+  } catch (e) {
+    console.error('保存图片失败:', e);
+  }
+}
+
+function deleteThumbnail() {
+  emit('updateThumbnail', props.task, undefined);
+  closeImagePreview();
+}
+
+// 鼠标滚轮缩放
+function handleWheel(e: WheelEvent) {
+  e.preventDefault();
+  if (e.deltaY < 0) zoomIn();
+  else zoomOut();
+}
+
 // 展开/折叠状态
 const isExpanded = ref(false);
 
@@ -437,13 +524,16 @@ const needsExpand = computed(() =>
   props.task.description && props.task.description.length > 30
 );
 
-// 点击展开/折叠
+// 点击卡片空白区 → 仅切换展开/折叠，不进入编辑
 function toggleExpand(e: MouseEvent) {
   const target = e.target as HTMLElement;
   // 排除交互元素
-  if (target.closest('.n-checkbox, .star-icon, .expand-icon, .date-picker-trigger, .n-date-picker, .task-title, .title-input, .right-area')) return;
-  if (needsExpand.value) {
-    isExpanded.value = !isExpanded.value;
+  if (target.closest('.n-checkbox, .star-icon, .expand-icon, .date-picker-trigger, .n-date-picker, .task-title, .title-input, .right-area, .thumbnail-wrapper, .task-desc, .task-desc-empty, .desc-input, .desc-content')) return;
+
+  isExpanded.value = !isExpanded.value;
+  // 折叠时如果正在编辑，保存
+  if (!isExpanded.value && isEditingDesc.value) {
+    saveDesc();
   }
 }
 
@@ -471,16 +561,11 @@ function handleToggleStatus() {
   </div>
   <div
     class="simple-card"
-    :class="{ done: isDone, expanded: isExpanded, pinned: props.task.isPinned }"
+    :class="{ done: isDone, expanded: isExpanded }"
     :style="{ borderLeftColor: categoryColor || 'transparent', borderLeftWidth: categoryColor ? '3px' : '0' }"
     @click="toggleExpand"
     @contextmenu="handleContextMenu"
   >
-    <!-- 置顶按钮 -->
-    <span class="pin-btn" @click.stop="emit('togglePin', props.task)">
-      <NIcon :component="props.task.isPinned ? PinIcon : PinOutlineIcon" size="16" />
-    </span>
-
     <!-- 完成状态复选框 -->
     <NCheckbox
       :checked="isDone"
@@ -490,7 +575,7 @@ function handleToggleStatus() {
     />
 
     <!-- 缩略图（如果有） -->
-    <div v-if="props.task.thumbnailBase64" class="thumbnail-wrapper">
+    <div v-if="props.task.thumbnailBase64" class="thumbnail-wrapper" @click.stop="openImagePreview">
       <img
         :src="`data:image/jpeg;base64,${props.task.thumbnailBase64}`"
         class="thumbnail"
@@ -583,16 +668,15 @@ function handleToggleStatus() {
         v-if="props.task.description || isEditingDesc"
         class="task-desc"
         :class="{ expanded: isExpanded }"
-        @click="startEditDesc"
       >
-        <div v-if="!isEditingDesc" class="desc-content">{{ props.task.description }}</div>
+        <div v-if="!isEditingDesc" class="desc-content" @click="startEditDesc">{{ props.task.description }}</div>
         <textarea
           v-else
           ref="descInputRef"
           v-model="editDescValue"
           class="desc-input"
           placeholder="添加描述..."
-          rows="3"
+          :rows="editRows"
           @blur="saveDesc"
           @keydown="handleDescKeydown"
           @keyup.escape="cancelDescEdit"
@@ -606,6 +690,47 @@ function handleToggleStatus() {
       </div>
     </div>
   </div>
+
+  <!-- 图片预览弹窗 -->
+  <NModal v-model:show="showImagePreview" :mask-closable="true" @after-leave="closeImagePreview" @keydown.esc="closeImagePreview">
+    <div class="image-preview-overlay" @click="closeImagePreview" @wheel="handleWheel">
+      <div class="image-preview-container" @click.stop>
+        <img
+          :src="`data:image/jpeg;base64,${props.task.thumbnailBase64}`"
+          class="preview-image"
+          :style="{ transform: `scale(${flipH ? -1 : 1} * ${imageScale}, ${flipV ? -1 : 1} * ${imageScale}) rotate(${imageRotate}deg)` }"
+          @click="closeImagePreview"
+          alt=""
+        />
+      </div>
+      <div class="preview-toolbar" @click.stop>
+        <NButton quaternary circle @click="zoomOut" title="缩小">
+          <NIcon :component="ZoomOutIcon" size="18" />
+        </NButton>
+        <NButton quaternary circle @click="zoomIn" title="放大">
+          <NIcon :component="ZoomInIcon" size="18" />
+        </NButton>
+        <NButton quaternary circle @click="resetImage" title="重置">
+          <NIcon :component="ResetIcon" size="18" />
+        </NButton>
+        <NButton quaternary circle @click="flipHorizontal" title="水平翻转">
+          <NIcon :component="FlipHIcon" size="18" />
+        </NButton>
+        <NButton quaternary circle @click="flipVertical" title="垂直翻转">
+          <NIcon :component="FlipVIcon" size="18" />
+        </NButton>
+        <NButton quaternary circle @click="rotateImage" title="旋转">
+          <NIcon :component="RotateIcon" size="18" />
+        </NButton>
+        <NButton quaternary circle @click="downloadImage" title="保存">
+          <NIcon :component="DownloadIcon" size="18" />
+        </NButton>
+        <NButton quaternary circle @click="deleteThumbnail" title="删除">
+          <NIcon :component="DeleteIcon" size="18" style="color:#E05252" />
+        </NButton>
+      </div>
+    </div>
+  </NModal>
 </template>
 
 <style scoped>
@@ -633,37 +758,6 @@ html.dark .simple-card {
 
 html.dark .simple-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.simple-card.done {
-  opacity: 0.5;
-}
-
-.simple-card.pinned {
-  background: linear-gradient(135deg, #fff 0%, #f8f4e8 100%);
-}
-
-html.dark .simple-card.pinned {
-  background: linear-gradient(135deg, #2a2a2a 0%, #353025 100%);
-}
-
-.pin-btn {
-  display: flex;
-  align-items: center;
-  color: #ccc;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: color 0.15s ease, transform 0.15s ease;
-  margin-right: 4px;
-}
-
-.pin-btn:hover {
-  color: #FFB800;
-  transform: scale(1.1);
-}
-
-.simple-card.pinned .pin-btn {
-  color: #FFB800;
 }
 
 .simple-card.done {
@@ -821,8 +915,8 @@ html.dark .date-display:hover {
 }
 
 .countdown.soon {
-  background: #fff3e0;
-  color: #FF9500;
+  background: rgba(224, 82, 82, 0.1);
+  color: #E05252;
 }
 
 .countdown.urgent {
@@ -841,8 +935,8 @@ html.dark .countdown.normal {
 }
 
 html.dark .countdown.soon {
-  background: rgba(255, 149, 0, 0.15);
-  color: #FF9500;
+  background: rgba(224, 82, 82, 0.2);
+  color: #E05252;
 }
 
 html.dark .countdown.urgent {
@@ -959,5 +1053,62 @@ html.dark .screenshot-hint {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateX(-50%) translateY(8px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* 图片预览 */
+.image-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  cursor: zoom-out;
+}
+
+.image-preview-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  overflow: hidden;
+}
+
+.preview-image {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+  transition: transform 0.2s ease;
+  cursor: grab;
+  user-select: none;
+}
+
+.preview-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 12px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+html.dark .preview-toolbar {
+  background: rgba(40, 40, 40, 0.6);
+}
+
+.preview-toolbar .n-button {
+  color: #fff;
+}
+
+html.dark .preview-toolbar .n-button {
+  color: #e0e0e0;
+}
+
+.preview-toolbar .n-button:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 </style>
