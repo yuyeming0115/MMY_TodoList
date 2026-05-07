@@ -5,6 +5,7 @@ import {
   StarOutline as StarOutlineIcon,
   Star as StarIcon,
   ChevronDownOutline as ExpandIcon,
+  ChevronUpOutline as TopIcon,
   CreateOutline as EditIcon,
   TrashOutline as DeleteIcon,
   FolderOutline as FolderIcon,
@@ -41,6 +42,7 @@ const emit = defineEmits<{
   (e: 'updateTitle', task: Task, title: string): void;
   (e: 'updateDescription', task: Task, description: string | undefined): void;
   (e: 'updateThumbnail', task: Task, thumbnail: string | undefined): void;
+  (e: 'moveToTop', task: Task): void;
 }>();
 
 // 截图提示状态
@@ -251,6 +253,11 @@ const contextMenuOptions = computed(() => {
       key: 'delete',
       icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } })
     },
+    {
+      label: '移动到最顶部',
+      key: 'moveToTop',
+      icon: () => h(NIcon, { component: TopIcon, size: 16 })
+    },
     { type: 'divider', key: 'd1' },
     ...categoryOptions
   ];
@@ -282,6 +289,8 @@ function handleMenuSelect(key: string) {
     takeScreenshot();
   } else if (key === 'clearImage') {
     emit('updateThumbnail', props.task, undefined);
+  } else if (key === 'moveToTop') {
+    emit('moveToTop', props.task);
   } else if (key.startsWith('cat-')) {
     const categoryId = key.slice(4);
     if (categoryId !== props.task.categoryId) {

@@ -346,6 +346,14 @@ function updateTaskThumbnail(task: Task, thumbnailBase64: string | undefined) {
   taskStore.update(task);
 }
 
+// 移动任务到最顶部
+function moveTaskToTop(task: Task) {
+  const categoryTasks = taskStore.tasks.filter((t: Task) => t.categoryId === task.categoryId);
+  const minSort = Math.min(...categoryTasks.map((t: Task) => t.sortOrder));
+  task.sortOrder = (minSort || 0) - 1;
+  taskStore.update(task);
+}
+
 // 打开分类管理
 function openCategoryPage() {
   currentPage.value = 'category';
@@ -495,6 +503,7 @@ const themeOverrides = {
                   @update-title="updateTaskTitle"
                   @update-description="updateTaskDescription"
                   @update-thumbnail="updateTaskThumbnail"
+                  @move-to-top="moveTaskToTop"
                 />
               </div>
             </template>
