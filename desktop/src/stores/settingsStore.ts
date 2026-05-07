@@ -8,7 +8,9 @@ export const useSettingsStore = defineStore('settings', () => {
     themeMode: 'system',
     language: 'zh',
     hideCompletedTasks: false,
-    launchAtStartup: false
+    launchAtStartup: false,
+    fontSize: 14,
+    fontFamily: ''
   });
 
   async function load() {
@@ -44,6 +46,14 @@ export const useSettingsStore = defineStore('settings', () => {
     update({ windowX: x, windowY: y });
   }
 
+  function setFontSize(size: number) {
+    update({ fontSize: size });
+  }
+
+  function setFontFamily(family: string) {
+    update({ fontFamily: family });
+  }
+
   return {
     settings,
     load,
@@ -53,6 +63,8 @@ export const useSettingsStore = defineStore('settings', () => {
     setHideCompleted,
     setLaunchAtStartup,
     setWindowSize,
-    setWindowPosition
+    setWindowPosition,
+    setFontSize,
+    setFontFamily
   };
 });

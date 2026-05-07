@@ -753,6 +753,7 @@ function handleToggleStatus() {
   user-select: none;
   display: flex;
   align-items: flex-start;
+  font-family: var(--task-font-family, inherit);
   gap: 12px;
 }
 
@@ -811,7 +812,7 @@ html.dark .thumbnail-wrapper {
 }
 
 .task-title {
-  font-size: 14px;
+  font-size: var(--task-font-size, 14px);
   color: #333;
   font-weight: 500;
   flex: 1;
@@ -829,7 +830,7 @@ html.dark .task-title {
 }
 
 .title-input {
-  font-size: 14px;
+  font-size: var(--task-font-size, 14px);
   font-weight: 500;
   color: #333;
   background: transparent;
@@ -884,7 +885,7 @@ html.dark .title-input::placeholder {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: calc(var(--task-font-size, 14px) * 0.857);
 }
 
 .date-display {
@@ -914,7 +915,7 @@ html.dark .date-display:hover {
 .countdown {
   padding: 1px 6px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: calc(var(--task-font-size, 14px) * 0.786);
   font-weight: 500;
 }
 
@@ -971,7 +972,7 @@ html.dark .countdown.overdue {
 }
 
 .task-desc {
-  font-size: 12px;
+  font-size: calc(var(--task-font-size, 14px) * 0.857);
   color: #888;
   margin-top: 4px;
   white-space: nowrap;
@@ -997,7 +998,7 @@ html.dark .task-desc {
 }
 
 .task-desc-empty {
-  font-size: 12px;
+  font-size: calc(var(--task-font-size, 14px) * 0.857);
   color: #999;
   margin-top: 4px;
   cursor: pointer;
@@ -1020,7 +1021,7 @@ html.dark .task-desc-empty:hover {
 }
 
 .desc-input {
-  font-size: 12px;
+  font-size: calc(var(--task-font-size, 14px) * 0.857);
   color: #888;
   background: transparent;
   border: none;

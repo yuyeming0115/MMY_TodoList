@@ -64,7 +64,9 @@ impl Database {
                 window_width INTEGER,
                 window_height INTEGER,
                 window_x INTEGER,
-                window_y INTEGER
+                window_y INTEGER,
+                font_size INTEGER DEFAULT 14,
+                font_family TEXT DEFAULT ''
             )",
             [],
         )?;
@@ -78,6 +80,14 @@ impl Database {
             "ALTER TABLE settings ADD COLUMN window_y INTEGER",
             [],
         ).ok(); // 忽略错误（列已存在）
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN font_size INTEGER DEFAULT 14",
+            [],
+        ).ok();
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN font_family TEXT DEFAULT ''",
+            [],
+        ).ok();
 
         // 初始化默认设置
         conn.execute(
@@ -309,7 +319,7 @@ impl Database {
     pub fn get_settings(&self) -> SqliteResult<AppSettings> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT theme_mode, language, hide_completed_tasks, launch_at_startup, window_width, window_height, window_x, window_y FROM settings WHERE id = 1",
+            "SELECT theme_mode, language, hide_completed_tasks, launch_at_startup, window_width, window_height, window_x, window_y, font_size, font_family FROM settings WHERE id = 1",
             [],
             |row| Ok(AppSettings {
                 theme_mode: row.get(0)?,
@@ -320,6 +330,8 @@ impl Database {
                 window_height: row.get::<_, Option<i32>>(5)?,
                 window_x: row.get::<_, Option<i32>>(6)?,
                 window_y: row.get::<_, Option<i32>>(7)?,
+                font_size: row.get::<_, i32>(8)?,
+                font_family: row.get(9)?,
             }),
         )
     }
@@ -327,7 +339,7 @@ impl Database {
     pub fn update_settings(&self, settings: &AppSettings) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE settings SET theme_mode = ?1, language = ?2, hide_completed_tasks = ?3, launch_at_startup = ?4, window_width = ?5, window_height = ?6, window_x = ?7, window_y = ?8 WHERE id = 1",
+            "UPDATE settings SET theme_mode = ?1, language = ?2, hide_completed_tasks = ?3, launch_at_startup = ?4, window_width = ?5, window_height = ?6, window_x = ?7, window_y = ?8, font_size = ?9, font_family = ?10 WHERE id = 1",
             rusqlite::params![
                 &settings.theme_mode,
                 &settings.language,
@@ -337,6 +349,8 @@ impl Database {
                 &settings.window_height,
                 &settings.window_x,
                 &settings.window_y,
+                &settings.font_size,
+                &settings.font_family,
             ],
         )?;
         Ok(())

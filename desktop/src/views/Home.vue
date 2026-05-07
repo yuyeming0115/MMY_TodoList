@@ -26,6 +26,9 @@ import type { Task } from '../types';
 // 检测是否为 Windows
 const isWindows = navigator.userAgent.toLowerCase().includes('windows');
 
+// 检测是否为 Mac
+const isMac = /mac/i.test(navigator.userAgent);
+
 // 窗口最大化状态
 const isMaximized = ref(false);
 // 最大化前的窗口尺寸
@@ -143,6 +146,11 @@ function onDragEnd() {
 
 // 初始化加载
 onMounted(async () => {
+  // 设置平台 class
+  if (isMac) {
+    document.documentElement.classList.add('platform-mac');
+  }
+
   await Promise.all([
     categoryStore.load(),
     taskStore.load(),
@@ -255,6 +263,20 @@ const isDark = computed(() => {
 watch(isDark, (val) => {
   document.documentElement.classList.toggle('dark', val);
 }, { immediate: true });
+
+// 同步字体设置到 CSS 变量
+function applyFontSettings() {
+  const { fontSize, fontFamily } = settingsStore.settings;
+  document.documentElement.style.setProperty('--task-font-size', fontSize + 'px');
+  if (fontFamily) {
+    document.documentElement.style.setProperty('--task-font-family', fontFamily);
+  } else {
+    document.documentElement.style.removeProperty('--task-font-family');
+  }
+}
+
+// 监听字体设置变化，实时更新
+watch(() => [settingsStore.settings.fontSize, settingsStore.settings.fontFamily], applyFontSettings, { immediate: true });
 
 function toggleTheme() {
   const next = isDark.value ? 'light' : 'dark';
@@ -406,12 +428,12 @@ const themeOverrides = {
                 <span class="pin-emoji">📌</span>
               </NButton>
             </div>
-            <!-- Mac 红黄绿按钮 -->
-            <div class="window-controls mac-controls" v-if="!isWindows">
+            <!-- Mac 红黄绿按钮（已隐藏，使用原生交通灯按钮） -->
+            <!-- <div class="window-controls mac-controls" v-if="!isWindows">
               <span class="dot close" @click="hideToTray()" />
               <span class="dot minimize" @click="appWindow.minimize()" />
               <span class="dot maximize" @click="appWindow.maximize()" />
-            </div>
+            </div> -->
             <!-- Windows 标准按钮 -->
             <div class="window-controls win-controls" v-if="isWindows">
               <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
@@ -563,6 +585,20 @@ html.dark .app-container {
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
+}
+
+/* Mac 原生装饰适配 */
+html.platform-mac .header {
+  padding-left: 70px;
+  padding-top: 10px;
+}
+
+html.platform-mac .app-container {
+  border-radius: 10px;
+}
+
+html.dark .header {
+  background: #1a1a1a;
 }
 
 /* 固定顶部区域 */

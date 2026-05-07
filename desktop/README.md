@@ -1,7 +1,140 @@
-# Tauri + Vue + TypeScript
+# MMY TodoList
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+简洁的跨平台任务管理桌面应用。MMY-Tools 系列项目之一。
 
-## Recommended IDE Setup
+![Logo](desktop/src-tauri/icons/logo.png)
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## 功能简介
+
+- 多分类任务管理（最多 9 个分类）
+- 任务支持标题、描述、日期、优先级、缩略图
+- 拖拽排序、实时搜索
+- 主题切换（亮色/暗色/跟随系统）
+- 数据导出/导入
+- 系统托盘（关闭窗口后应用继续运行）
+- 缩略图预览（缩放/旋转/翻转/保存/删除）
+- 窗口置顶（标题栏 📌 按钮）
+
+## 运行开发
+
+```bash
+cd desktop
+npm install
+npm run tauri dev
+```
+
+## 打包发布
+
+**一键打包脚本（项目根目录）：**
+
+```bash
+./build.sh        # 自动检测当前系统
+./build.sh mac    # macOS DMG
+./build.sh win    # Windows 便携版 EXE
+```
+
+**或在 desktop 目录下：**
+
+```bash
+npm run build:mac   # macOS DMG
+npm run build:win   # Windows 便携版 EXE
+```
+
+**构建产物位置：**
+- macOS: `desktop/src-tauri/target/release/bundle/dmg/`
+- Windows: `desktop/src-tauri/target/release/bundle/nsis/`
+
+> 注意：macOS DMG 只能在 macOS 上构建，Windows EXE 只能在 Windows 上构建。
+
+## 使用教程
+
+### 基本操作
+
+1. **添加任务**：点击底部「添加任务」按钮
+2. **编辑标题**：点击任务标题直接编辑
+3. **编辑描述**：点击描述区域进入编辑模式（自动展开，最多 20 行）
+4. **删除任务**：右键任务卡片选择「删除」
+5. **切换状态**：点击任务卡片左侧圆点（待办 → 进行中 → 已完成）
+6. **展开/折叠**：点击任务卡空白区切换展开或折叠
+7. **设置优先级**：点击任务卡右侧星标（1-3 星）
+8. **右键菜单**：右键任务卡片打开编辑、截图、分类等操作
+
+### 缩略图
+
+- **添加缩略图**：右键任务卡片 → 选择图片 / 截图存为缩略图
+- **预览缩略图**：点击缩略图弹出大图预览，支持缩放、旋转、翻转、保存、删除
+- **关闭预览**：点击背景、按 ESC 或点击图片即可关闭
+
+### 窗口置顶
+
+- 点击标题栏 📌 按钮可让窗口始终保持在最上层
+
+### 分类管理
+
+- 点击顶部文件夹图标进入分类管理
+- 支持添加、编辑、删除、拖拽排序分类
+- 最多支持 9 个分类
+
+### 设置
+
+- 点击顶部齿轮图标进入设置
+- 主题切换、隐藏已完成任务、开机自启动
+
+### 数据管理
+
+- **导出**：设置页面 → 导出数据 → 保存 `.mmytodo` 文件
+- **导入**：设置页面 → 导入数据 → 选择 `.mmytodo` 文件
+- **数据位置**：
+  - macOS: `~/Library/Application Support/com.mmy-tools.todolist/`
+  - Windows: `%APPDATA%\com.mmy-tools.todolist\`
+
+## 窗口装饰说明
+
+### macOS
+- 使用系统原生交通灯按钮（红/黄/绿），支持 hover 交互（显示 `-`、`□`、`×`）
+- 窗口启用透明背景 + 原生装饰
+- 点击关闭按钮时隐藏到系统托盘，不退出应用
+
+### Windows
+- 使用自定义标题栏 + 窗口控制按钮（最小化/最大化/关闭）
+- 窗口无原生装饰，完全自定义 UI
+
+## 版本更新
+
+### v1.3.1
+- Mac 使用原生交通灯按钮（红黄绿），支持 hover 交互（显示 `-`、`□`、`×`）
+- 窗口配置调整为 Mac 原生装饰 + 透明背景，Windows 保持自定义标题栏不变
+- 新增窗口装饰平台差异说明文档
+
+### v1.3
+- 分类功能优化
+- 增加右键任务卡快速置顶功能
+- 修复描述区内部编辑，修复任务卡折叠，增加截图图像操作功能
+- 修复 Mac 右键缩略图功能
+- 一键打包脚本
+
+### v1.2
+- 窗口置顶按钮改为拟物风格
+- 移除任务置顶功能，改用拖拽排序
+- 任务卡交互优化：点击空白区展开/折叠，点击描述进入编辑
+- 缩略图预览：支持缩放、旋转、翻转、保存、删除
+- 编辑描述时 textarea 自动扩展（最多 20 行）
+- 倒计时 ≤3 天红色文字提示
+- 修复 Mac 右键缩略图功能
+- 一键打包脚本
+
+### v1.1
+- 增加右键缩略图功能
+
+### v1.0.0
+- 初始版本发布
+- 核心任务管理功能
+- 分类管理（最多 9 个）
+- 拖拽排序
+- 主题切换
+- 数据导出/导入
+- 系统托盘支持
+
+---
+
+**技术栈**：Tauri 2 + Vue 3 + TypeScript + Naive UI + SQLite

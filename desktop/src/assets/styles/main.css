@@ -20,6 +20,16 @@
   --border-dark: #3A3A3C;
 }
 
+/* 自定义字体注册 */
+@font-face {
+  font-family: 'AlimamaDongfangDakai';
+  src: url('../fonts/阿里妈妈东方大楷.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'DouyinMeihaoTi';
+  src: url('../fonts/抖音美好体.otf') format('opentype');
+}
+
 /* 滚动条样式 */
 ::-webkit-scrollbar {
   width: 6px;

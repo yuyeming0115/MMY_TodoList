@@ -33,6 +33,8 @@ export interface AppSettings {
   windowHeight?: number;
   windowX?: number;
   windowY?: number;
+  fontSize: number;
+  fontFamily: string;
 }
 
 export interface ExportData {

@@ -82,6 +82,8 @@ pub struct AppSettings {
     pub window_height: Option<i32>,
     pub window_x: Option<i32>,
     pub window_y: Option<i32>,
+    pub font_size: i32,
+    pub font_family: String,
 }
 
 impl Default for AppSettings {
@@ -95,6 +97,8 @@ impl Default for AppSettings {
             window_height: None,
             window_x: None,
             window_y: None,
+            font_size: 14,
+            font_family: String::new(),
         }
     }
 }
