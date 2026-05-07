@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Category, Task, AppSettings, ExportData } from '../types';
+import type { Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem } from '../types';
 
 // 分类操作
 export async function getCategories(): Promise<Category[]> {
@@ -67,4 +67,46 @@ export async function exportData(): Promise<ExportData> {
 
 export async function importData(data: ExportData): Promise<void> {
   return invoke('import_data', { data });
+}
+
+// 剪贴板分类操作
+export async function getClipboardCategories(): Promise<ClipboardCategory[]> {
+  return invoke('get_clipboard_categories');
+}
+
+export async function addClipboardCategory(name: string, color: string): Promise<ClipboardCategory> {
+  return invoke('add_clipboard_category', { name, color });
+}
+
+export async function updateClipboardCategory(category: ClipboardCategory): Promise<void> {
+  return invoke('update_clipboard_category', { category });
+}
+
+export async function deleteClipboardCategory(id: string): Promise<void> {
+  return invoke('delete_clipboard_category', { id });
+}
+
+export async function reorderClipboardCategories(ids: string[]): Promise<void> {
+  return invoke('reorder_clipboard_categories', { ids });
+}
+
+// 剪贴板项目操作
+export async function getClipboardItems(): Promise<ClipboardItem[]> {
+  return invoke('get_clipboard_items');
+}
+
+export async function addClipboardItem(item: Omit<ClipboardItem, 'id' | 'createdAt'>): Promise<ClipboardItem> {
+  return invoke('add_clipboard_item', { item });
+}
+
+export async function updateClipboardItem(item: ClipboardItem): Promise<void> {
+  return invoke('update_clipboard_item', { item });
+}
+
+export async function deleteClipboardItem(id: string): Promise<void> {
+  return invoke('delete_clipboard_item', { id });
+}
+
+export async function reorderClipboardItems(ids: string[]): Promise<void> {
+  return invoke('reorder_clipboard_items', { ids });
 }

@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "MMY Todo",
-        "width": 400,
+        "width": 680,
         "height": 600,
-        "minWidth": 300,
+        "minWidth": 500,
         "minHeight": 400,
         "resizable": true,
         "decorations": true,

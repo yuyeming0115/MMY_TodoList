@@ -1,5 +1,5 @@
 use crate::database::Database;
-use crate::models::{Category, Task, AppSettings, ExportData};
+use crate::models::{Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem};
 use chrono::Utc;
 use serde::Deserialize;
 use tauri::State;
@@ -150,4 +150,79 @@ pub fn import_data(db: State<'_, Database>, data: ExportData) -> Result<(), Stri
     db.update_settings(&data.settings).map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// 剪贴板分类命令
+#[tauri::command]
+pub fn get_clipboard_categories(db: State<'_, Database>) -> Result<Vec<ClipboardCategory>, String> {
+    db.get_clipboard_categories().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_clipboard_category(db: State<'_, Database>, name: String, color: String) -> Result<ClipboardCategory, String> {
+    db.add_clipboard_category(name, color).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_clipboard_category(db: State<'_, Database>, category: ClipboardCategory) -> Result<(), String> {
+    db.update_clipboard_category(&category).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_clipboard_category(db: State<'_, Database>, id: String) -> Result<(), String> {
+    db.delete_clipboard_category(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn reorder_clipboard_categories(db: State<'_, Database>, ids: Vec<String>) -> Result<(), String> {
+    db.reorder_clipboard_categories(&ids).map_err(|e| e.to_string())
+}
+
+// 剪贴板项目命令
+#[tauri::command]
+pub fn get_clipboard_items(db: State<'_, Database>) -> Result<Vec<ClipboardItem>, String> {
+    db.get_clipboard_items().map_err(|e| e.to_string())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewClipboardItem {
+    pub category_id: String,
+    pub title: String,
+    pub content: String,
+    pub image_base64: Option<String>,
+    pub priority: i32,
+    pub sort_order: i32,
+}
+
+#[tauri::command]
+pub fn add_clipboard_item(db: State<'_, Database>, item: NewClipboardItem) -> Result<ClipboardItem, String> {
+    let now = Utc::now().timestamp_millis();
+    let full_item = ClipboardItem {
+        id: Uuid::new_v4().to_string(),
+        category_id: item.category_id,
+        title: item.title,
+        content: item.content,
+        image_base64: item.image_base64,
+        priority: item.priority,
+        sort_order: item.sort_order,
+        created_at: now,
+    };
+    db.add_clipboard_item(&full_item).map_err(|e| e.to_string())?;
+    Ok(full_item)
+}
+
+#[tauri::command]
+pub fn update_clipboard_item(db: State<'_, Database>, item: ClipboardItem) -> Result<(), String> {
+    db.update_clipboard_item(&item).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_clipboard_item(db: State<'_, Database>, id: String) -> Result<(), String> {
+    db.delete_clipboard_item(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn reorder_clipboard_items(db: State<'_, Database>, ids: Vec<String>) -> Result<(), String> {
+    db.reorder_clipboard_items(&ids).map_err(|e| e.to_string())
 }

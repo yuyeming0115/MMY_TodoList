@@ -81,6 +81,18 @@ pub fn run() {
             // 导出导入
             commands::export_data,
             commands::import_data,
+            // 剪贴板分类
+            commands::get_clipboard_categories,
+            commands::add_clipboard_category,
+            commands::update_clipboard_category,
+            commands::delete_clipboard_category,
+            commands::reorder_clipboard_categories,
+            // 剪贴板项目
+            commands::get_clipboard_items,
+            commands::add_clipboard_item,
+            commands::update_clipboard_item,
+            commands::delete_clipboard_item,
+            commands::reorder_clipboard_items,
             // 系统托盘
             hide_to_tray,
             // 工具命令

@@ -46,6 +46,25 @@ export interface ExportData {
   settings: AppSettings;
 }
 
+export interface ClipboardCategory {
+  id: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface ClipboardItem {
+  id: string;
+  categoryId: string;
+  title: string;
+  content: string;
+  imageBase64?: string;
+  priority: 1 | 2 | 3;
+  sortOrder: number;
+  createdAt: number;
+}
+
 // 限制常量
 export const FREE_CATEGORY_LIMIT = 9;
 export const FREE_TASK_PER_CATEGORY_LIMIT = 50;

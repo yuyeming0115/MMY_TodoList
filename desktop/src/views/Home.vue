@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import {
-  NConfigProvider, NMessageProvider, NDialogProvider, NButton, NIcon, NSpace,
-  darkTheme
+  NButton, NIcon, NInput,
+  useMessage
 } from 'naive-ui';
 import {
   AddOutline as AddIcon, SettingsOutline as SettingsIcon,
   SunnyOutline as LightIcon, MoonOutline as DarkIcon,
   CloseOutline as CloseIcon, RemoveOutline as MinusIcon,
-  ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon
+  ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon,
+  ListOutline as ListIcon, ClipboardOutline as ClipboardIcon,
+  CopyOutline as CopyIcon
 } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
@@ -17,7 +19,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCategoryStore } from '../stores/categoryStore';
 import { useTaskStore } from '../stores/taskStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useClipboardStore } from '../stores/clipboardStore';
 import CategoryTabs from '../components/CategoryTabs.vue';
+import ClipboardCategoryTabs from '../components/ClipboardCategoryTabs.vue';
+import ClipboardPanel from '../components/ClipboardPanel.vue';
 import SettingsPage from '../components/SettingsPage.vue';
 import SearchBar from '../components/SearchBar.vue';
 import TaskCard from '../components/TaskCard.vue';
@@ -66,7 +71,9 @@ async function toggleMaximize() {
 const categoryStore = useCategoryStore();
 const taskStore = useTaskStore();
 const settingsStore = useSettingsStore();
+const clipboardStore = useClipboardStore();
 const appWindow = getCurrentWindow();
+const message = useMessage();
 
 // 窗口置顶状态
 const isPinned = ref(false);
@@ -74,7 +81,32 @@ const isPinned = ref(false);
 const prePinSize = ref<{ width: number; height: number } | null>(null);
 
 // 精简模式下窗口尺寸
-const COMPACT_WIDTH = 320;
+const COMPACT_WIDTH = 400;
+
+// 面板切换
+const activePanel = ref<'tasks' | 'clipboard'>('tasks');
+
+async function switchPanel(panel: 'tasks' | 'clipboard') {
+  activePanel.value = panel;
+  if (panel === 'clipboard') {
+    await clipboardStore.load();
+  }
+}
+
+// 剪贴板搜索
+const clipboardSearchQuery = ref('');
+
+function onClipboardSearch(val: string) {
+  clipboardStore.searchQuery = val;
+}
+
+// 从剪贴板粘贴
+async function handlePasteClipboard() {
+  await clipboardStore.pasteFromClipboard({
+    success: (msg: string) => message.success(msg),
+    warning: (msg: string) => message.warning(msg),
+  });
+}
 
 // 切换窗口置顶 + 精简模式
 async function togglePin() {
@@ -174,6 +206,13 @@ onMounted(async () => {
     taskStore.load(),
     settingsStore.load()
   ]);
+
+  // 窗口宽度迁移：旧用户窗口太窄时重置
+  const { windowWidth } = settingsStore.settings;
+  if (windowWidth && windowWidth < 500) {
+    settingsStore.setWindowSize(680, settingsStore.settings.windowHeight || 600);
+    await appWindow.setSize(new LogicalSize(680, settingsStore.settings.windowHeight || 600));
+  }
 
   // 应用保存的窗口尺寸和位置
   applyWindowState();
@@ -322,11 +361,6 @@ const isDark = computed(() => {
   return window.matchMedia('(prefers-color-scheme: dark)').matches;
 });
 
-// 同步 dark 类到 html 元素
-watch(isDark, (val) => {
-  document.documentElement.classList.toggle('dark', val);
-}, { immediate: true });
-
 // 同步字体设置到 CSS 变量
 function applyFontSettings() {
   const { fontSize, fontFamily } = settingsStore.settings;
@@ -466,152 +500,190 @@ async function hideToTray() {
   } catch (_) {}
 }
 
-const themeOverrides = {
-  common: {
-    primaryColor: '#4A90D9',
-    primaryColorHover: '#5BA4F5',
-    borderRadius: '8px'
-  }
-};
 </script>
 
 <template>
-  <NConfigProvider :theme="isDark ? darkTheme : null" :themeOverrides="themeOverrides">
-    <NMessageProvider>
-      <NDialogProvider>
-        <!-- 主页面 -->
-        <div v-if="currentPage === 'main'" class="app-container">
-        <!-- 固定顶部区域（可拖拽窗口） -->
-        <div class="fixed-header" @mousedown="startWindowDrag">
-          <!-- 标题栏（可拖拽区域） -->
-          <div class="header" data-tauri-drag-region>
-            <!-- 置顶按钮 -->
-            <div class="pin-control">
-              <NButton quaternary size="tiny" @click="togglePin" :type="isPinned ? 'primary' : 'default'" round>
-                <span class="pin-emoji">📌</span>
-              </NButton>
-            </div>
-            <!-- Mac 红黄绿按钮（已隐藏，使用原生交通灯按钮） -->
-            <!-- <div class="window-controls mac-controls" v-if="!isWindows">
-              <span class="dot close" @click="hideToTray()" />
-              <span class="dot minimize" @click="appWindow.minimize()" />
-              <span class="dot maximize" @click="appWindow.maximize()" />
-            </div> -->
-            <!-- Windows 标准按钮 -->
-            <div class="window-controls win-controls" v-if="isWindows">
-              <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
-                <template #icon>
-                  <NIcon :component="MinusIcon" :size="12" />
-                </template>
-              </NButton>
-              <NButton quaternary size="tiny" class="win-btn" @click="toggleMaximize()">
-                <template #icon>
-                  <NIcon :component="isMaximized ? RestoreIcon : MaximizeIcon" :size="12" />
-                </template>
-              </NButton>
-              <NButton quaternary size="tiny" class="win-btn close-btn" @click="hideToTray()">
-                <template #icon>
-                  <NIcon :component="CloseIcon" :size="12" />
-                </template>
-              </NButton>
-            </div>
-            <!-- 完整模式下的额外控件 -->
-            <template v-if="!isPinned">
-              <div class="tabs-wrapper">
+  <div class="app-layout">
+          <!-- 全局 Header（最上方，全宽） -->
+          <div class="global-header" @mousedown="startWindowDrag">
+            <div class="header" data-tauri-drag-region>
+              <!-- 置顶按钮（始终显示） -->
+              <div class="pin-control">
+                <NButton quaternary size="tiny" @click="togglePin" :type="isPinned ? 'primary' : 'default'" round>
+                  <span class="pin-emoji">📌</span>
+                </NButton>
+              </div>
+
+              <!-- 任务面板：分类 tabs -->
+              <div v-if="activePanel === 'tasks' && !isPinned" class="tabs-wrapper">
                 <CategoryTabs />
               </div>
-              <NSpace :size="4">
-                <NButton quaternary size="tiny" @click="toggleTheme">
+
+              <!-- 剪贴板面板：分类 tabs -->
+              <div v-else-if="activePanel === 'clipboard' && !isPinned" class="tabs-wrapper">
+                <ClipboardCategoryTabs />
+              </div>
+
+              <!-- 任务面板：添加任务按钮 -->
+              <NButton
+                v-if="activePanel === 'tasks' && !isPinned"
+                type="primary" size="tiny" round
+                @click="openAddTask"
+                class="header-action-btn"
+              >
+                <template #icon><NIcon :component="AddIcon" /></template>
+                添加任务
+              </NButton>
+
+              <!-- 剪贴板面板：从剪贴板粘贴按钮 -->
+              <NButton
+                v-else-if="activePanel === 'clipboard' && !isPinned"
+                type="primary" size="tiny" round
+                @click="handlePasteClipboard"
+                class="header-action-btn"
+              >
+                <template #icon><NIcon :component="CopyIcon" /></template>
+                粘贴
+              </NButton>
+
+              <!-- 窗口控制按钮 -->
+              <div class="window-controls win-controls" v-if="isWindows">
+                <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
                   <template #icon>
-                    <NIcon :component="isDark ? LightIcon : DarkIcon" />
+                    <NIcon :component="MinusIcon" :size="12" />
                   </template>
                 </NButton>
-                <NButton quaternary size="tiny" @click="openSettingsPage">
+                <NButton quaternary size="tiny" class="win-btn" @click="toggleMaximize()">
                   <template #icon>
-                    <NIcon :component="SettingsIcon" />
+                    <NIcon :component="isMaximized ? RestoreIcon : MaximizeIcon" :size="12" />
                   </template>
                 </NButton>
-              </NSpace>
-            </template>
+                <NButton quaternary size="tiny" class="win-btn close-btn" @click="hideToTray()">
+                  <template #icon>
+                    <NIcon :component="CloseIcon" :size="12" />
+                  </template>
+                </NButton>
+              </div>
+            </div>
+
+            <!-- 第二行：搜索栏 -->
+            <div v-if="!isPinned" class="search-wrapper">
+              <SearchBar v-if="activePanel === 'tasks'" />
+              <NInput
+                v-else-if="activePanel === 'clipboard'"
+                v-model:value="clipboardSearchQuery"
+                placeholder="搜索剪贴板..."
+                clearable size="small"
+                @update:value="onClipboardSearch"
+                @clear="clipboardSearchQuery = ''"
+              />
+            </div>
           </div>
 
-          <!-- 搜索栏 -->
-          <div v-if="!isPinned" class="search-wrapper">
-            <SearchBar />
-          </div>
-        </div>
+          <!-- 侧边栏 + 内容区 -->
+          <div class="body-area">
+            <!-- 侧边栏 -->
+            <nav class="sidebar">
+              <div class="sidebar-buttons">
+                <button
+                  :class="['sidebar-btn', { active: activePanel === 'tasks' && currentPage === 'main' }]"
+                  @click="switchPanel('tasks')"
+                  title="任务"
+                >
+                  <NIcon :component="ListIcon" size="22" />
+                </button>
+                <button
+                  :class="['sidebar-btn', { active: activePanel === 'clipboard' && currentPage === 'main' }]"
+                  @click="switchPanel('clipboard')"
+                  title="剪贴板"
+                >
+                  <NIcon :component="ClipboardIcon" size="22" />
+                </button>
+                <div class="sidebar-spacer" />
+                <button
+                  :class="['sidebar-btn', { active: !isDark }]"
+                  @click="toggleTheme"
+                  title="切换主题"
+                >
+                  <NIcon :component="isDark ? LightIcon : DarkIcon" size="22" />
+                </button>
+                <button
+                  :class="['sidebar-btn', { active: currentPage === 'settings' }]"
+                  @click="currentPage === 'settings' ? goBackToMain() : openSettingsPage()"
+                  title="设置"
+                >
+                  <NIcon :component="SettingsIcon" size="22" />
+                </button>
+              </div>
+            </nav>
 
-        <!-- 任务列表（可滚动区域） -->
-        <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned }">
-          <div v-if="filteredTasks.length === 0" class="empty">
-            暂无任务
-          </div>
-          <draggable
-            v-else
-            v-model="taskList"
-            :disabled="!dragEnabled"
-            item-key="id"
-            ghost-class="ghost"
-            chosen-class="chosen"
-            drag-class="dragging"
-            :animation="200"
-            :force-fallback="true"
-            :fallback-tolerance="3"
-            class="drag-container"
-            :class="{ 'is-dragging': isDragging }"
-            @start="onDragStart"
-            @end="onDragEnd"
-          >
-            <template #item="{ element }">
-              <div class="task-wrapper">
-                <TaskCard
-                  :task="element"
-                  :category-color="getCategoryColor(element)"
-                  :categories="categoryStore.categories"
-                  :is-editing-title="editingTaskId === element.id"
-                  :compact="isPinned"
-                  @edit="editTask"
-                  @delete="deleteTask"
-                  @toggle-status="toggleTaskStatus"
-                  @update-priority="updateTaskPriority"
-                  @update-category="updateTaskCategory"
-                  @update-start-date="updateTaskStartDate"
-                  @update-due-date="updateTaskDueDate"
-                  @update-title="updateTaskTitle"
-                  @update-description="updateTaskDescription"
-                  @update-thumbnail="updateTaskThumbnail"
-                  @move-to-top="moveTaskToTop"
+            <!-- 主内容区 -->
+            <div class="main-content">
+              <!-- 任务面板 -->
+              <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel">
+                <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned }">
+                  <div v-if="filteredTasks.length === 0" class="empty">
+                    暂无任务
+                  </div>
+                  <draggable
+                    v-else
+                    v-model="taskList"
+                    :disabled="!dragEnabled"
+                    item-key="id"
+                    ghost-class="ghost"
+                    chosen-class="chosen"
+                    drag-class="dragging"
+                    :animation="200"
+                    :force-fallback="true"
+                    :fallback-tolerance="3"
+                    class="drag-container"
+                    :class="{ 'is-dragging': isDragging }"
+                    @start="onDragStart"
+                    @end="onDragEnd"
+                  >
+                    <template #item="{ element }">
+                      <div class="task-wrapper">
+                        <TaskCard
+                          :task="element"
+                          :category-color="getCategoryColor(element)"
+                          :categories="categoryStore.categories"
+                          :is-editing-title="editingTaskId === element.id"
+                          :compact="isPinned"
+                          @edit="editTask"
+                          @delete="deleteTask"
+                          @toggle-status="toggleTaskStatus"
+                          @update-priority="updateTaskPriority"
+                          @update-category="updateTaskCategory"
+                          @update-start-date="updateTaskStartDate"
+                          @update-due-date="updateTaskDueDate"
+                          @update-title="updateTaskTitle"
+                          @update-description="updateTaskDescription"
+                          @update-thumbnail="updateTaskThumbnail"
+                          @move-to-top="moveTaskToTop"
+                        />
+                      </div>
+                    </template>
+                  </draggable>
+                </div>
+
+                <TaskFormModal
+                  :show="showTaskForm"
+                  :task="editingTask"
+                  @close="showTaskForm = false"
+                  @saved="onTaskSaved"
                 />
               </div>
-            </template>
-          </draggable>
+
+              <!-- 剪贴板面板 -->
+              <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel">
+                <ClipboardPanel />
+              </div>
+
+              <!-- 设置页面 -->
+              <SettingsPage v-if="currentPage === 'settings'" @back="goBackToMain" />
+            </div>
+          </div>
         </div>
-
-        <!-- 底部添加按钮（固定，可拖拽窗口） -->
-        <div v-if="!isPinned" class="footer" @mousedown="startWindowDrag">
-          <NButton type="primary" block @click="openAddTask">
-            <template #icon>
-              <NIcon :component="AddIcon" />
-            </template>
-            添加任务
-          </NButton>
-        </div>
-
-        <!-- 弹窗 -->
-        <TaskFormModal
-          :show="showTaskForm"
-          :task="editingTask"
-          @close="showTaskForm = false"
-          @saved="onTaskSaved"
-        />
-      </div>
-
-        <!-- 设置页面 -->
-        <SettingsPage v-if="currentPage === 'settings'" @back="goBackToMain" />
-
-      </NDialogProvider>
-    </NMessageProvider>
-  </NConfigProvider>
 </template>
 
 <style>
@@ -635,12 +707,126 @@ html.dark, html.dark body, html.dark #app {
 }
 
 .app-container {
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   padding: 12px;
   overflow: hidden;
   background: #f5f5f5;
+}
+
+/* 侧边栏布局 */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 全局 Header（最上方，全宽） */
+.global-header {
+  flex-shrink: 0;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 12px 12px 0 12px;
+}
+
+html.dark .global-header {
+  background: #1a1a1a;
+  border-bottom-color: #333;
+}
+
+.global-header .header {
+  padding-bottom: 8px;
+}
+
+.global-header .search-wrapper {
+  padding: 4px 0 8px;
+}
+
+/* 侧边栏 + 内容区 */
+.body-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 52px;
+  flex-shrink: 0;
+  background: #2d2d2d;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  -webkit-app-region: drag;
+  app-region: drag;
+  z-index: 10;
+}
+
+html.dark .sidebar {
+  background: #1a1a1a;
+}
+
+.sidebar-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 4px;
+  flex: 1;
+}
+
+.sidebar-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  flex-shrink: 0;
+}
+
+.sidebar-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ddd;
+}
+
+.sidebar-btn.active {
+  background: rgba(74, 144, 217, 0.25);
+  color: #4A90D9;
+}
+
+.sidebar-spacer {
+  flex: 1;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.tasks-panel .app-container,
+.clipboard-panel .app-container {
+  padding: 12px;
 }
 
 html.dark .app-container {
@@ -773,6 +959,14 @@ html.dark .win-controls .win-btn:hover {
 
 .search-wrapper {
   padding: 4px 0 8px;
+}
+
+/* Header 中的操作按钮 */
+.header-action-btn {
+  flex-shrink: 0;
+  height: 28px;
+  font-size: 13px;
+  padding: 0 12px;
 }
 
 /* 任务列表（唯一可滚动区域） */

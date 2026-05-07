@@ -105,6 +105,41 @@ impl Default for AppSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClipboardCategory {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub sort_order: i32,
+    pub created_at: i64,
+}
+
+impl ClipboardCategory {
+    pub fn new(name: String, color: String) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name,
+            color,
+            sort_order: 0,
+            created_at: Utc::now().timestamp_millis(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardItem {
+    pub id: String,
+    pub category_id: String,
+    pub title: String,
+    pub content: String,
+    pub image_base64: Option<String>,
+    pub priority: i32,
+    pub sort_order: i32,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportData {
     pub version: String,
     pub exported_at: String,

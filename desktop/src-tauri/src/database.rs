@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 use uuid::Uuid;
-use crate::models::{Category, Task, AppSettings};
+use crate::models::{Category, Task, AppSettings, ClipboardCategory, ClipboardItem};
 
 pub struct Database {
     pub conn: Mutex<Connection>,
@@ -94,6 +94,47 @@ impl Database {
             "INSERT OR IGNORE INTO settings (id) VALUES (1)",
             [],
         )?;
+
+        // 创建剪贴板分类表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS clipboard_categories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                color TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at INTEGER
+            )",
+            [],
+        )?;
+
+        // 创建剪贴板项目表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS clipboard_items (
+                id TEXT PRIMARY KEY,
+                category_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                image_base64 TEXT,
+                priority INTEGER DEFAULT 1,
+                sort_order INTEGER DEFAULT 0,
+                created_at INTEGER
+            )",
+            [],
+        )?;
+
+        // 初始化默认剪贴板分类
+        let cb_count: i64 = conn.query_row("SELECT COUNT(*) FROM clipboard_categories", [], |r| r.get(0))?;
+        if cb_count == 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
+
+            conn.execute(
+                "INSERT INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES ('cb-default', '默认', '#4A90D9', 0, ?1)",
+                [now],
+            )?;
+        }
 
         // 初始化默认分类（仅当数据库中没有任何分类时）
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM categories", [], |r| r.get(0))?;
@@ -356,6 +397,146 @@ impl Database {
                 &settings.font_family,
             ],
         )?;
+        Ok(())
+    }
+
+    // 剪贴板分类操作
+    pub fn get_clipboard_categories(&self) -> SqliteResult<Vec<ClipboardCategory>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, color, sort_order, created_at FROM clipboard_categories ORDER BY sort_order"
+        )?;
+
+        let categories = stmt.query_map([], |row| {
+            Ok(ClipboardCategory {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                color: row.get(2)?,
+                sort_order: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?.collect::<SqliteResult<Vec<ClipboardCategory>>>();
+
+        categories
+    }
+
+    pub fn add_clipboard_category(&self, name: String, color: String) -> SqliteResult<ClipboardCategory> {
+        let category = ClipboardCategory::new(name, color);
+        let conn = self.conn.lock().unwrap();
+
+        let max_order: i32 = conn.query_row(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM clipboard_categories",
+            [],
+            |row| row.get(0),
+        )?;
+
+        conn.execute(
+            "INSERT INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            [&category.id, &category.name, &category.color, &max_order.to_string(), &category.created_at.to_string()],
+        )?;
+
+        Ok(category)
+    }
+
+    pub fn update_clipboard_category(&self, category: &ClipboardCategory) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE clipboard_categories SET name = ?1, color = ?2, sort_order = ?3 WHERE id = ?4",
+            [&category.name, &category.color, &category.sort_order.to_string(), &category.id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_clipboard_category(&self, id: &str) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM clipboard_items WHERE category_id = ?1", [id])?;
+        conn.execute("DELETE FROM clipboard_categories WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn reorder_clipboard_categories(&self, ids: &[String]) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        for (i, id) in ids.iter().enumerate() {
+            conn.execute(
+                "UPDATE clipboard_categories SET sort_order = ?1 WHERE id = ?2",
+                [&(i as i32).to_string(), id],
+            )?;
+        }
+        Ok(())
+    }
+
+    // 剪贴板项目操作
+    pub fn get_clipboard_items(&self) -> SqliteResult<Vec<ClipboardItem>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, category_id, title, content, image_base64, priority, sort_order, created_at FROM clipboard_items ORDER BY sort_order"
+        )?;
+
+        let items = stmt.query_map([], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                category_id: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                image_base64: row.get(4)?,
+                priority: row.get(5)?,
+                sort_order: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?.collect::<SqliteResult<Vec<ClipboardItem>>>();
+
+        items
+    }
+
+    pub fn add_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                &item.id,
+                &item.category_id,
+                &item.title,
+                &item.content,
+                &item.image_base64,
+                &item.priority,
+                &item.sort_order,
+                &item.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE clipboard_items SET category_id = ?1, title = ?2, content = ?3, image_base64 = ?4, priority = ?5, sort_order = ?6 WHERE id = ?7",
+            rusqlite::params![
+                &item.category_id,
+                &item.title,
+                &item.content,
+                &item.image_base64,
+                &item.priority,
+                &item.sort_order,
+                &item.id,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_clipboard_item(&self, id: &str) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM clipboard_items WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn reorder_clipboard_items(&self, ids: &[String]) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        for (i, id) in ids.iter().enumerate() {
+            conn.execute(
+                "UPDATE clipboard_items SET sort_order = ?1 WHERE id = ?2",
+                [&(i as i32).to_string(), id],
+            )?;
+        }
         Ok(())
     }
 }
