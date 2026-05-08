@@ -8,7 +8,7 @@ import {
   getClipboardItems, addClipboardItem, updateClipboardItem,
   deleteClipboardItem, reorderClipboardItems
 } from '../utils/db';
-import { FREE_CATEGORY_LIMIT } from '../types';
+import { FREE_CATEGORY_LIMIT, BUILTIN_CLIPBOARD_CATEGORY_META, BUILTIN_CLIPBOARD_CATEGORIES, isBuiltinClipboardCategory } from '../types';
 
 export const useClipboardStore = defineStore('clipboard', () => {
   const categories = ref<ClipboardCategory[]>([]);
@@ -17,7 +17,18 @@ export const useClipboardStore = defineStore('clipboard', () => {
   const loading = ref(false);
   const searchQuery = ref('');
 
-  const canAddMore = computed(() => categories.value.length < FREE_CATEGORY_LIMIT);
+  // 内置分类（始终存在，不可删除）
+  const builtinCategories = computed(() =>
+    categories.value.filter(c => isBuiltinClipboardCategory(c.id))
+  );
+
+  // 用户自定义分类
+  const customCategories = computed(() =>
+    categories.value.filter(c => !isBuiltinClipboardCategory(c.id))
+  );
+
+  // 可添加的自定义分类数量
+  const canAddMore = computed(() => customCategories.value.length < FREE_CATEGORY_LIMIT);
 
   // 过滤后的项目
   const filteredItems = computed(() => {
@@ -46,11 +57,55 @@ export const useClipboardStore = defineStore('clipboard', () => {
         getClipboardCategories(),
         getClipboardItems()
       ]);
-      categories.value = cats;
-      items.value = itms;
-      if (!selectedCategoryId.value && cats.length > 0) {
-        selectedCategoryId.value = cats[0].id;
+
+      // 迁移：将旧的同名分类替换为内置分类
+      const existingIds = new Set(cats.map(c => c.id));
+      const now = Date.now();
+      const idsToDelete: string[] = [];
+
+      for (const meta of BUILTIN_CLIPBOARD_CATEGORY_META) {
+        if (!existingIds.has(meta.id)) {
+          // 查找是否有同名的旧分类
+          const oldCat = cats.find(c => c.name === meta.name && !isBuiltinClipboardCategory(c.id));
+          if (oldCat) {
+            // 迁移：把旧分类的项目转移到内置分类
+            for (const item of itms) {
+              if (item.categoryId === oldCat.id) {
+                item.categoryId = meta.id;
+                await updateClipboardItem(item);
+              }
+            }
+            // 标记删除旧分类
+            idsToDelete.push(oldCat.id);
+          } else {
+            // 没有旧分类，直接创建内置分类
+            const builtinCat: ClipboardCategory = {
+              id: meta.id,
+              name: meta.name,
+              color: meta.color,
+              sortOrder: meta.sortOrder,
+              createdAt: now,
+            };
+            await addClipboardCategory(builtinCat.name, builtinCat.color);
+            cats.push(builtinCat);
+          }
+        }
       }
+
+      // 删除旧的重复分类
+      for (const id of idsToDelete) {
+        await deleteClipboardCategory(id);
+      }
+
+      // 重新加载以获取最新数据
+      const [finalCats, finalItms] = await Promise.all([
+        getClipboardCategories(),
+        getClipboardItems()
+      ]);
+
+      categories.value = finalCats;
+      items.value = finalItms;
+      // 默认不选中任何分类，显示全部项目
     } finally {
       loading.value = false;
     }
@@ -82,6 +137,9 @@ export const useClipboardStore = defineStore('clipboard', () => {
   }
 
   async function removeCategory(id: string) {
+    if (isBuiltinClipboardCategory(id)) {
+      return;
+    }
     await deleteClipboardCategory(id);
     categories.value = categories.value.filter(c => c.id !== id);
     items.value = items.value.filter(i => i.categoryId !== id);
@@ -100,6 +158,15 @@ export const useClipboardStore = defineStore('clipboard', () => {
   }
 
   async function addItem(itemData: Omit<ClipboardItem, 'id' | 'createdAt' | 'sortOrder'>) {
+    // 去重：相同 category + 相同内容/图片则跳过
+    const exists = items.value.some(i =>
+      i.categoryId === itemData.categoryId &&
+      (itemData.imageBase64
+        ? i.imageBase64 === itemData.imageBase64
+        : i.content === itemData.content)
+    );
+    if (exists) return null;
+
     const minSortOrder = items.value.length > 0
       ? Math.min(...items.value.map(i => i.sortOrder))
       : 0;
@@ -129,19 +196,54 @@ export const useClipboardStore = defineStore('clipboard', () => {
     await load();
   }
 
+  // 收藏/取消收藏项目，返回操作结果：'favorited' | 'unfavorited' | 'error'
+  async function favoriteItem(item: ClipboardItem): Promise<'favorited' | 'unfavorited' | 'error'> {
+    const favoriteCat = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
+    if (!favoriteCat) return 'error';
+
+    if (item.categoryId === favoriteCat.id) {
+      // 已经在收藏中，取消收藏（移动到文本分类）
+      const textCat = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.TEXT);
+      if (!textCat) return 'error';
+      item.categoryId = textCat.id;
+      await updateClipboardItem(item);
+      const index = items.value.findIndex(i => i.id === item.id);
+      if (index !== -1) items.value[index] = item;
+      return 'unfavorited';
+    } else {
+      // 移动到收藏分类
+      item.categoryId = favoriteCat.id;
+      await updateClipboardItem(item);
+      const index = items.value.findIndex(i => i.id === item.id);
+      if (index !== -1) items.value[index] = item;
+      return 'favorited';
+    }
+  }
+
   // 从剪贴板粘贴
   async function pasteFromClipboard(message?: { success: (msg: string) => void; warning: (msg: string) => void }) {
+    const textCategoryId = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.TEXT)?.id
+      || categories.value.find(c => isBuiltinClipboardCategory(c.id))?.id
+      || categories.value[0]?.id || '';
+    const imageCategoryId = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.IMAGE)?.id
+      || categories.value.find(c => isBuiltinClipboardCategory(c.id))?.id
+      || categories.value[0]?.id || '';
+
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
         const title = text.length > 30 ? text.substring(0, 30) + '...' : text;
-        await addItem({
-          categoryId: selectedCategoryId.value || categories.value[0]?.id || '',
+        const result = await addItem({
+          categoryId: textCategoryId,
           title,
           content: text,
           priority: 2,
         });
-        message?.success('已粘贴文本');
+        if (result) {
+          message?.success('已粘贴文本');
+        } else {
+          message?.warning('内容已存在');
+        }
         return;
       }
     } catch (_) {}
@@ -154,14 +256,18 @@ export const useClipboardStore = defineStore('clipboard', () => {
           const reader = new FileReader();
           reader.onloadend = async () => {
             const base64 = reader.result as string;
-            await addItem({
-              categoryId: selectedCategoryId.value || categories.value[0]?.id || '',
+            const result = await addItem({
+              categoryId: imageCategoryId,
               title: '剪贴板图片',
               content: '',
               imageBase64: base64,
               priority: 2,
             });
-            message?.success('已粘贴图片');
+            if (result) {
+              message?.success('已粘贴图片');
+            } else {
+              message?.warning('图片已存在');
+            }
           };
           reader.readAsDataURL(blob);
           return;
@@ -178,6 +284,8 @@ export const useClipboardStore = defineStore('clipboard', () => {
     selectedCategoryId,
     loading,
     searchQuery,
+    builtinCategories,
+    customCategories,
     canAddMore,
     filteredItems,
     load,
@@ -191,5 +299,6 @@ export const useClipboardStore = defineStore('clipboard', () => {
     removeItem,
     reorderItems,
     pasteFromClipboard,
+    favoriteItem,
   };
 });

@@ -152,7 +152,7 @@ onUnmounted(() => {
   <div class="category-tabs" ref="tabsRef">
     <!-- "全部" tab，固定不可拖拽 -->
     <button
-      :class="['tab-btn', { active: !store.selectedCategoryId }]"
+      :class="['tab-btn', 'all-tab', { active: !store.selectedCategoryId }]"
       @click="selectCategory(null)"
     >
       全部
@@ -315,6 +315,11 @@ onUnmounted(() => {
   color: #4A90D9;
   border-bottom: 2px solid #4A90D9;
   border-radius: 4px 4px 0 0;
+}
+
+.all-tab.active {
+  background: rgba(74, 144, 217, 0.2);
+  font-weight: 600;
 }
 
 .add-tab-btn {

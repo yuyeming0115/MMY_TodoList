@@ -222,8 +222,6 @@ fn launch_pixpin(pixpin_path: String) -> Result<(), String> {
 fn read_clipboard_image() -> Result<Option<String>, String> {
     #[cfg(target_os = "windows")]
     {
-        use base64::{Engine, engine::general_purpose::STANDARD};
-
         for attempt in 0..10 {
             let result = try_read_once();
             match result {

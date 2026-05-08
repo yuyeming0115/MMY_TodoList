@@ -757,12 +757,18 @@ html.dark .simple-card {
 
 .simple-card:hover {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  border-color: #4A90D9;
+  border-top-color: #4A90D9;
+  border-right-color: #4A90D9;
+  border-bottom-color: #4A90D9;
   transform: scale(1.01);
 }
 
 html.dark .simple-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  border-top-color: #4A90D9;
+  border-right-color: #4A90D9;
+  border-bottom-color: #4A90D9;
+  transform: scale(1.01);
 }
 
 .simple-card.done {
@@ -771,7 +777,7 @@ html.dark .simple-card:hover {
 
 /* 精简模式样式 */
 .simple-card.compact {
-  padding: 8px 14px;
+  padding: 8px 10px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
@@ -783,6 +789,11 @@ html.dark .simple-card.compact {
   background: rgba(42, 42, 42, 0.95);
   border-color: rgba(91, 164, 245, 0.25);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* 精简模式禁用 hover 放大，避免被 overflow 裁切 */
+.simple-card.compact:hover {
+  transform: none;
 }
 
 .simple-card.compact .task-title {

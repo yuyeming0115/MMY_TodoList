@@ -122,7 +122,7 @@ impl Database {
             [],
         )?;
 
-        // 初始化默认剪贴板分类
+        // 初始化默认剪贴板分类（文本、图像、收藏）
         let cb_count: i64 = conn.query_row("SELECT COUNT(*) FROM clipboard_categories", [], |r| r.get(0))?;
         if cb_count == 0 {
             let now = std::time::SystemTime::now()
@@ -131,9 +131,65 @@ impl Database {
                 .as_millis() as i64;
 
             conn.execute(
-                "INSERT INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES ('cb-default', '默认', '#4A90D9', 0, ?1)",
+                "INSERT INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES ('builtin_text', '文本', '#4A90D9', 0, ?1)",
                 [now],
             )?;
+            conn.execute(
+                "INSERT INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES ('builtin_image', '图像', '#28C840', 1, ?1)",
+                [now],
+            )?;
+            conn.execute(
+                "INSERT INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES ('builtin_favorite', '收藏', '#F39C12', 2, ?1)",
+                [now],
+            )?;
+        } else {
+            // 迁移：为已有数据库补充缺失的内置分类
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
+            let now_str = now.to_string();
+
+            let builtin_categories = [
+                ("builtin_text", "文本", "#4A90D9", 0),
+                ("builtin_image", "图像", "#28C840", 1),
+                ("builtin_favorite", "收藏", "#F39C12", 2),
+            ];
+
+            for (id, name, color, sort_order) in &builtin_categories {
+                let exists: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM clipboard_categories WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )?;
+                if exists == 0 {
+                    let sort_order_str = sort_order.to_string();
+                    conn.execute(
+                        "INSERT OR IGNORE INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                        [*id, *name, *color, sort_order_str.as_str(), now_str.as_str()],
+                    ).ok();
+
+                    // 将同名的旧分类项目迁移到内置分类
+                    let old_ids: Vec<String> = conn.prepare(
+                        "SELECT id FROM clipboard_categories WHERE name = ?1 AND id != ?2"
+                    ).ok().map(|mut stmt| {
+                        stmt.query_map([*name], |r| r.get(0)).ok()
+                            .map(|rows| rows.filter_map(|r| r.ok()).collect::<Vec<String>>())
+                            .unwrap_or_default()
+                    }).unwrap_or_default();
+
+                    for old_id in &old_ids {
+                        conn.execute(
+                            "UPDATE clipboard_items SET category_id = ?1 WHERE category_id = ?2",
+                            [*id, old_id.as_str()],
+                        ).ok();
+                        conn.execute(
+                            "DELETE FROM clipboard_categories WHERE id = ?1",
+                            [old_id.as_str()],
+                        ).ok();
+                    }
+                }
+            }
         }
 
         // 初始化默认分类（仅当数据库中没有任何分类时）
@@ -566,12 +622,8 @@ impl Database {
             content.to_string()
         };
 
-        // 获取默认剪贴板分类 ID
-        let category_id: String = conn.query_row(
-            "SELECT id FROM clipboard_categories ORDER BY sort_order LIMIT 1",
-            [],
-            |row| row.get(0),
-        )?;
+        // 使用内置"文本"分类 ID
+        let category_id = "builtin_text";
 
         // 获取最小 sort_order，新内容放在最前面
         let min_order: i32 = conn.query_row(
@@ -580,11 +632,15 @@ impl Database {
             |row| row.get(0),
         )?;
 
-        conn.execute(
-            "INSERT INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at)
+        // 使用 INSERT OR IGNORE 防止竞态重复
+        let affected = conn.execute(
+            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at)
              VALUES (?1, ?2, ?3, ?4, NULL, 2, ?5, ?6)",
-            rusqlite::params![&id, &category_id, &title, content, min_order - 1, &now],
+            rusqlite::params![&id, category_id, &title, content, min_order - 1, &now],
         )?;
+        if affected == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
     }
 
@@ -597,12 +653,8 @@ impl Database {
             .unwrap()
             .as_millis() as i64;
 
-        // 获取默认剪贴板分类 ID
-        let category_id: String = conn.query_row(
-            "SELECT id FROM clipboard_categories ORDER BY sort_order LIMIT 1",
-            [],
-            |row| row.get(0),
-        )?;
+        // 使用内置"图像"分类 ID
+        let category_id = "builtin_image";
 
         // 获取最小 sort_order
         let min_order: i32 = conn.query_row(
@@ -611,11 +663,15 @@ impl Database {
             |row| row.get(0),
         )?;
 
-        conn.execute(
-            "INSERT INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at)
+        // 使用 INSERT OR IGNORE 防止竞态重复
+        let affected = conn.execute(
+            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, 2, ?6, ?7)",
-            rusqlite::params![&id, &category_id, "剪贴板图片", "", image_base64, min_order - 1, &now],
+            rusqlite::params![&id, category_id, "剪贴板图片", "", image_base64, min_order - 1, &now],
         )?;
+        if affected == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
     }
 }

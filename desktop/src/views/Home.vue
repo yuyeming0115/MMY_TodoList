@@ -86,6 +86,9 @@ const COMPACT_WIDTH = 400;
 // 面板切换
 const activePanel = ref<'tasks' | 'clipboard'>('tasks');
 
+// 精简模式下的剪贴板分类过滤
+const compactClipFilter = ref<string | null>(null);
+
 async function switchPanel(panel: 'tasks' | 'clipboard') {
   activePanel.value = panel;
   if (panel === 'clipboard') {
@@ -524,6 +527,21 @@ async function hideToTray() {
                 <ClipboardCategoryTabs />
               </div>
 
+              <!-- 精简模式：剪贴板迷你分类切换器 -->
+              <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clip-filter">
+                <button
+                  :class="['clip-pill', { active: compactClipFilter === null }]"
+                  @click="compactClipFilter = null"
+                >全部</button>
+                <button
+                  v-for="cat in clipboardStore.builtinCategories"
+                  :key="cat.id"
+                  :class="['clip-pill', { active: compactClipFilter === cat.id }]"
+                  :style="{ '--pill-color': cat.color }"
+                  @click="compactClipFilter = cat.id"
+                >{{ cat.name === '文本' ? '文' : cat.name === '图像' ? '图' : '★' }}</button>
+              </div>
+
               <!-- 任务面板：添加任务按钮 -->
               <NButton
                 v-if="activePanel === 'tasks' && !isPinned"
@@ -620,7 +638,7 @@ async function hideToTray() {
             <!-- 主内容区 -->
             <div class="main-content">
               <!-- 任务面板 -->
-              <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel">
+              <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isPinned }">
                 <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned }">
                   <div v-if="filteredTasks.length === 0" class="empty">
                     暂无任务
@@ -675,8 +693,8 @@ async function hideToTray() {
               </div>
 
               <!-- 剪贴板面板 -->
-              <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel">
-                <ClipboardPanel />
+              <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel" :class="{ 'compact-panel': isPinned }">
+                <ClipboardPanel :compact="isPinned" :category-filter="compactClipFilter" />
               </div>
 
               <!-- 设置页面 -->
@@ -762,10 +780,12 @@ html.dark .global-header {
   -webkit-app-region: drag;
   app-region: drag;
   z-index: 10;
+  border-right: 1px solid #d0d0d0;
 }
 
 html.dark .sidebar {
   background: #1a1a1a;
+  border-right-color: #333;
 }
 
 .sidebar-buttons {
@@ -839,6 +859,10 @@ html.dark .sidebar-btn.active {
   padding: 0 12px;
 }
 
+.panel.compact-panel {
+  padding: 12px;
+}
+
 .tasks-panel .task-list,
 .clipboard-panel .clipboard-list {
   padding-top: 12px;
@@ -899,10 +923,17 @@ html.dark .header {
 /* 标题栏内的交互控件不可拖拽 */
 .pin-control,
 .window-controls,
-.tabs-wrapper,
 .header .n-space {
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+.tabs-wrapper {
+  -webkit-app-region: drag;
+  app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
 }
 
 .pin-control {
@@ -985,18 +1016,74 @@ html.dark .win-controls .win-btn:hover {
   padding: 0 12px;
 }
 
+/* 精简模式剪贴板分类 pill */
+.compact-clip-filter {
+  display: flex;
+  gap: 4px;
+  padding: 2px 0 6px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.clip-pill {
+  padding: 2px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 12px;
+  background: transparent;
+  color: #666;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1.4;
+}
+
+.clip-pill:hover {
+  background: rgba(74, 144, 217, 0.1);
+  border-color: #4A90D9;
+  color: #4A90D9;
+}
+
+.clip-pill.active {
+  background: var(--pill-color, #4A90D9);
+  border-color: var(--pill-color, #4A90D9);
+  color: #fff;
+  font-weight: 600;
+}
+
+.clip-pill:first-child.active {
+  background: #4A90D9;
+  border-color: #4A90D9;
+}
+
+html.dark .clip-pill {
+  border-color: #444;
+  color: #999;
+}
+
+html.dark .clip-pill:hover {
+  background: rgba(74, 144, 217, 0.15);
+  border-color: #4A90D9;
+  color: #4A90D9;
+}
+
+html.dark .clip-pill.active {
+  color: #F87171;
+  background: rgba(248, 113, 113, 0.15);
+  border-color: #F87171;
+}
+
 /* 任务列表（唯一可滚动区域） */
 .task-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 0;
+  padding: 8px 6px;
 }
 
 /* 精简模式列表 */
 .task-list.compact-list {
-  padding: 4px 0;
+  padding: 0;
 }
 
 .task-list.compact-list .task-wrapper {

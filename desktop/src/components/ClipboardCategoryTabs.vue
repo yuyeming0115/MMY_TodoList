@@ -3,23 +3,29 @@ import { ref, watch, onMounted, onUnmounted } from 'vue';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import type { ClipboardCategory } from '../types';
-import { NDropdown, NPopover, NColorPicker, useMessage, useDialog } from 'naive-ui';
+import { NDropdown, NPopover, NColorPicker, useMessage, useDialog, type DropdownOption } from 'naive-ui';
 import { h } from 'vue';
 import { NIcon } from 'naive-ui';
-import { CreateOutline as EditIcon, TrashOutline as DeleteIcon } from '@vicons/ionicons5';
-import { FREE_CATEGORY_LIMIT } from '../types';
+import { CreateOutline as EditIcon, TrashOutline as DeleteIcon, StarOutline as StarIcon } from '@vicons/ionicons5';
+import { FREE_CATEGORY_LIMIT, isBuiltinClipboardCategory, BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 
 const store = useClipboardStore();
 const message = useMessage();
 const dialog = useDialog();
 
-// 独立的 ref，由 vuedraggable 控制
-const categoryList = ref<ClipboardCategory[]>([]);
+// 内置分类始终存在，由 store.builtinCategories 提供
+const builtinList = ref<ClipboardCategory[]>([]);
+// 用户自定义分类，可拖拽
+const customList = ref<ClipboardCategory[]>([]);
 const tabsRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
 
-watch(() => store.categories, (val) => {
-  categoryList.value = [...val];
+watch(() => store.builtinCategories, (val) => {
+  builtinList.value = [...val];
+}, { immediate: true });
+
+watch(() => store.customCategories, (val) => {
+  customList.value = [...val];
 }, { immediate: true });
 
 function onDragStart() {
@@ -28,7 +34,7 @@ function onDragStart() {
 
 function onDragEnd() {
   isDragging.value = false;
-  const ids = categoryList.value.map(c => c.id);
+  const ids = customList.value.map(c => c.id);
   store.reorderCategories(ids);
 }
 
@@ -76,6 +82,23 @@ function handleTabContextMenu(e: MouseEvent, cat: ClipboardCategory) {
   contextMenuY.value = e.clientY;
   contextMenuShow.value = true;
 }
+
+// 右键菜单选项：内置分类不显示删除
+const contextMenuOptions = (cat: ClipboardCategory): DropdownOption[] => {
+  const isBuiltin = isBuiltinClipboardCategory(cat.id);
+  if (isBuiltin) {
+    return [
+      { label: '编辑名称', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
+      { label: '设置颜色', key: 'color' },
+    ];
+  }
+  return [
+    { label: '编辑名称', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
+    { label: '设置颜色', key: 'color' },
+    { type: 'divider', key: 'd1' },
+    { label: '删除分类', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 14, style: { color: '#E05252' } }) },
+  ];
+};
 
 function handleContextMenuSelect(key: string) {
   contextMenuShow.value = false;
@@ -146,18 +169,43 @@ onUnmounted(() => {
 
 <template>
   <div class="category-tabs" ref="tabsRef">
-    <!-- "全部" tab，固定不可拖拽 -->
+    <!-- 全部 tab -->
     <button
-      :class="['tab-btn', { active: !store.selectedCategoryId }]"
+      :class="['tab-btn', 'all-tab', { active: store.selectedCategoryId === null }]"
       @click="selectCategory(null)"
     >
       全部
     </button>
 
-    <!-- 可拖拽的分类 tab -->
+    <!-- 内置分类 tab：文本、图像、收藏，固定不可拖拽 -->
+    <button
+      v-for="cat in builtinList"
+      :key="cat.id"
+      :class="['tab-btn', 'builtin-tab', { active: store.selectedCategoryId === cat.id }]"
+      @click="selectCategory(cat.id)"
+      @contextmenu="handleTabContextMenu($event, cat)"
+    >
+      <!-- 收藏分类显示特殊图标 -->
+      <NIcon v-if="cat.id === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE" :component="StarIcon" size="14" :style="{ marginRight: '4px', color: store.selectedCategoryId === cat.id ? cat.color : cat.color }" />
+      <template v-if="editingCategoryId === cat.id">
+        <input
+          v-model="editingName"
+          class="tab-edit-input"
+          @blur="finishInlineEdit(cat)"
+          @keyup.enter="finishInlineEdit(cat)"
+          @keyup.escape="editingCategoryId = ''"
+          @click.stop
+        />
+      </template>
+      <template v-else>
+        <span :style="cat.color ? { color: cat.color } : {}">{{ cat.name }}</span>
+      </template>
+    </button>
+
+    <!-- 可拖拽的用户自定义分类 tab -->
     <draggable
-      v-if="categoryList.length > 1"
-      v-model="categoryList"
+      v-if="customList.length > 1"
+      v-model="customList"
       item-key="id"
       :animation="200"
       :force-fallback="true"
@@ -193,10 +241,10 @@ onUnmounted(() => {
       </template>
     </draggable>
 
-    <!-- 只有一个分类时不需要拖拽 -->
+    <!-- 只有一个自定义分类时不需要拖拽 -->
     <template v-else>
       <button
-        v-for="cat in categoryList"
+        v-for="cat in customList"
         :key="cat.id"
         :class="['tab-btn', { active: store.selectedCategoryId === cat.id }]"
         @click="selectCategory(cat.id)"
@@ -234,12 +282,7 @@ onUnmounted(() => {
       :x="contextMenuX"
       :y="contextMenuY"
       :show="contextMenuShow"
-      :options="[
-        { label: '编辑名称', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
-        { label: '设置颜色', key: 'color' },
-        { type: 'divider', key: 'd1' },
-        { label: '删除分类', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 14, style: { color: '#E05252' } }) }
-      ]"
+      :options="contextMenuCat ? contextMenuOptions(contextMenuCat) : []"
       @select="handleContextMenuSelect"
       @clickoutside="contextMenuShow = false"
     />
@@ -310,6 +353,16 @@ onUnmounted(() => {
   color: #4A90D9;
   border-bottom: 2px solid #4A90D9;
   border-radius: 4px 4px 0 0;
+}
+
+/* 内置分类样式：更突出的背景 */
+.builtin-tab.active {
+  background: rgba(74, 144, 217, 0.15);
+}
+
+.all-tab.active {
+  background: rgba(74, 144, 217, 0.2);
+  font-weight: 600;
 }
 
 .add-tab-btn {
