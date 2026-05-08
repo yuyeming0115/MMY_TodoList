@@ -91,7 +91,6 @@ async function copyContent() {
 
 async function handleFavorite() {
   const result = await clipboardStore.favoriteItem(props.item);
-  const nowFavorited = props.item.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE;
   if (result === 'favorited') {
     message.success('已收藏');
   } else if (result === 'unfavorited') {
