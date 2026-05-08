@@ -37,7 +37,6 @@ impl ClipboardMonitor {
             let mut last_image_hash: Option<String> = None;
 
             while running.load(Ordering::Relaxed) {
-                // 安全读取：用 catch_unwind 防止 native 代码 panic 导致整个进程崩溃
                 let text_result = catch_unwind(|| try_read_text());
                 let image_result = catch_unwind(|| try_read_image());
 
@@ -46,7 +45,8 @@ impl ClipboardMonitor {
                     if text.len() <= MAX_TEXT_LEN {
                         let text_hash = hash_str(&text);
                         if last_text_hash.as_ref() != Some(&text_hash) {
-                            if !db.clipboard_text_exists(&text).unwrap_or(true) {
+                            let exists = db.clipboard_text_exists(&text).unwrap_or(false);
+                            if !exists {
                                 if db.add_auto_clipboard_text(&text).is_ok() {
                                     app_handle.emit("clipboard-changed", ()).ok();
                                 }

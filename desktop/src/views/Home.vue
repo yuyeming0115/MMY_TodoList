@@ -207,7 +207,8 @@ onMounted(async () => {
   await Promise.all([
     categoryStore.load(),
     taskStore.load(),
-    settingsStore.load()
+    settingsStore.load(),
+    clipboardStore.load(),
   ]);
 
   // 窗口宽度迁移：旧用户窗口太窄时重置
