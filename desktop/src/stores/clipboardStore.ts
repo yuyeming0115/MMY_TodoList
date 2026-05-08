@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { ClipboardCategory, ClipboardItem } from '../types';
 import {
   getClipboardCategories, addClipboardCategory, updateClipboardCategory,
@@ -53,6 +54,18 @@ export const useClipboardStore = defineStore('clipboard', () => {
     } finally {
       loading.value = false;
     }
+    // 注册剪贴板变化监听（只注册一次）
+    initClipboardListener();
+  }
+
+  // 监听后端剪贴板变化事件
+  let clipboardUnlisten: UnlistenFn | null = null;
+
+  async function initClipboardListener() {
+    if (clipboardUnlisten) return; // 已注册过
+    clipboardUnlisten = await listen('clipboard-changed', async () => {
+      await load();
+    });
   }
 
   async function addCategory(name: string, color: string) {

@@ -539,4 +539,83 @@ impl Database {
         }
         Ok(())
     }
+
+    /// 检查文本内容是否已存在于剪贴板项目中（去重用）
+    pub fn clipboard_text_exists(&self, content: &str) -> SqliteResult<bool> {
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM clipboard_items WHERE content = ?1 AND image_base64 IS NULL",
+            [content],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    /// 自动保存文本剪贴板内容（用于后台监控）
+    pub fn add_auto_clipboard_text(&self, content: &str) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        let id = Uuid::new_v4().to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        let title = if content.len() > 30 {
+            format!("{}...", &content[..30])
+        } else {
+            content.to_string()
+        };
+
+        // 获取默认剪贴板分类 ID
+        let category_id: String = conn.query_row(
+            "SELECT id FROM clipboard_categories ORDER BY sort_order LIMIT 1",
+            [],
+            |row| row.get(0),
+        )?;
+
+        // 获取最小 sort_order，新内容放在最前面
+        let min_order: i32 = conn.query_row(
+            "SELECT COALESCE(MIN(sort_order), 0) FROM clipboard_items",
+            [],
+            |row| row.get(0),
+        )?;
+
+        conn.execute(
+            "INSERT INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at)
+             VALUES (?1, ?2, ?3, ?4, NULL, 2, ?5, ?6)",
+            rusqlite::params![&id, &category_id, &title, content, min_order - 1, &now],
+        )?;
+        Ok(())
+    }
+
+    /// 自动保存图片剪贴板内容（用于后台监控）
+    pub fn add_auto_clipboard_image(&self, image_base64: &str) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        let id = Uuid::new_v4().to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        // 获取默认剪贴板分类 ID
+        let category_id: String = conn.query_row(
+            "SELECT id FROM clipboard_categories ORDER BY sort_order LIMIT 1",
+            [],
+            |row| row.get(0),
+        )?;
+
+        // 获取最小 sort_order
+        let min_order: i32 = conn.query_row(
+            "SELECT COALESCE(MIN(sort_order), 0) FROM clipboard_items",
+            [],
+            |row| row.get(0),
+        )?;
+
+        conn.execute(
+            "INSERT INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 2, ?6, ?7)",
+            rusqlite::params![&id, &category_id, "剪贴板图片", "", image_base64, min_order - 1, &now],
+        )?;
+        Ok(())
+    }
 }

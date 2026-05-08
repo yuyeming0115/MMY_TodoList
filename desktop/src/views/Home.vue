@@ -755,7 +755,7 @@ html.dark .global-header {
 .sidebar {
   width: 52px;
   flex-shrink: 0;
-  background: #2d2d2d;
+  background: #e8e8e8;
   display: flex;
   flex-direction: column;
   padding: 8px 0;
@@ -783,7 +783,7 @@ html.dark .sidebar {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #888;
+  color: #666;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -795,11 +795,25 @@ html.dark .sidebar {
 }
 
 .sidebar-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #333;
+}
+
+html.dark .sidebar-btn {
+  color: #888;
+}
+
+html.dark .sidebar-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #ddd;
 }
 
 .sidebar-btn.active {
+  background: rgba(74, 144, 217, 0.25);
+  color: #4A90D9;
+}
+
+html.dark .sidebar-btn.active {
   background: rgba(74, 144, 217, 0.25);
   color: #4A90D9;
 }
@@ -822,11 +836,13 @@ html.dark .sidebar {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  padding: 0 12px;
 }
 
-.tasks-panel .app-container,
-.clipboard-panel .app-container {
-  padding: 12px;
+.tasks-panel .task-list,
+.clipboard-panel .clipboard-list {
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 html.dark .app-container {

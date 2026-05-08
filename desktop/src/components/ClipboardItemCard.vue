@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { NIcon, NButton, NSpace } from 'naive-ui';
+import { NIcon, NDropdown } from 'naive-ui';
+import { h } from 'vue';
 import {
-  Star as StarIcon, TrashOutline as DeleteIcon, CopyOutline as CopyIcon
+  TrashOutline as DeleteIcon, CopyOutline as CopyIcon
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useMessage } from 'naive-ui';
+import { ref } from 'vue';
 
 const props = defineProps<{
   item: ClipboardItem;
@@ -17,56 +19,89 @@ const emit = defineEmits<{
 }>();
 
 const message = useMessage();
+const showContextMenu = ref(false);
+const contextMenuX = ref(0);
+const contextMenuY = ref(0);
 
-function handleClickStar(priority: 1 | 2 | 3) {
-  emit('update-priority', props.item, priority);
-}
+const contextMenuOptions = [
+  { label: '复制', key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
+  { type: 'divider', key: 'd1' },
+  { label: '删除', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) },
+];
 
 async function copyContent() {
-  await navigator.clipboard.writeText(props.item.content);
-  message.success('已复制');
+  try {
+    if (props.item.imageBase64) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      await invoke('write_image_to_clipboard', { base64: base64Data });
+      message.success('已复制图片');
+    } else if (props.item.content) {
+      await navigator.clipboard.writeText(props.item.content);
+      message.success('已复制');
+    }
+  } catch (e) {
+    if (props.item.content) {
+      const ta = document.createElement('textarea');
+      ta.value = props.item.content;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) {
+        message.success('已复制');
+        return;
+      }
+    }
+    message.error('复制失败');
+    console.error('复制失败:', e);
+  }
 }
 
-function formatDate(ts: number): string {
-  const d = new Date(ts);
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
-  return `${month}/${day}`;
+function handleClick() {
+  copyContent();
+}
+
+function handleContextMenu(e: MouseEvent) {
+  e.preventDefault();
+  contextMenuX.value = e.clientX;
+  contextMenuY.value = e.clientY;
+  showContextMenu.value = true;
+}
+
+function handleMenuSelect(key: string) {
+  showContextMenu.value = false;
+  if (key === 'copy') copyContent();
+  if (key === 'delete') emit('delete', props.item.id);
 }
 </script>
 
 <template>
-  <div class="task-card" @contextmenu="$emit('contextmenu', $event, item)">
-    <!-- 左侧勾选框 -->
-    <div class="task-check" />
-
-    <!-- 内容区 -->
+  <NDropdown
+    placement="bottom-start"
+    trigger="manual"
+    :x="contextMenuX"
+    :y="contextMenuY"
+    :show="showContextMenu"
+    :options="contextMenuOptions"
+    @select="handleMenuSelect"
+    @clickoutside="showContextMenu = false"
+  />
+  <div class="task-card" @click="handleClick" @contextmenu="handleContextMenu">
     <div class="task-content">
-      <div class="task-title">{{ item.title }}</div>
-      <div v-if="item.content" class="task-desc">{{ item.content }}</div>
-      <div v-if="item.imageBase64" class="task-thumbnail">
-        <img :src="item.imageBase64" alt="剪贴板图片" />
+      <!-- 纯图片：只显示图片 -->
+      <div v-if="item.imageBase64" class="image-only">
+        <div class="task-thumbnail">
+          <img :src="item.imageBase64" alt="剪贴板图片" />
+        </div>
       </div>
-      <div class="task-meta">
-        <span class="task-stars">
-          <NIcon
-            v-for="i in 3"
-            :key="i"
-            :component="StarIcon"
-            size="14"
-            :class="['star', { filled: i <= item.priority }]"
-            @click="handleClickStar(i as 1 | 2 | 3)"
-          />
-        </span>
-        <span class="task-time">{{ formatDate(item.createdAt) }}</span>
-        <NSpace :size="4">
-          <NButton text size="tiny" @click="copyContent">
-            <template #icon><NIcon :component="CopyIcon" size="14" /></template>
-          </NButton>
-          <NButton text size="tiny" @click="emit('delete', item.id)">
-            <template #icon><NIcon :component="DeleteIcon" size="14" color="#E05252" /></template>
-          </NButton>
-        </NSpace>
+
+      <!-- 文本：标题 + 内容 -->
+      <div v-if="!item.imageBase64">
+        <div class="task-title">{{ item.title }}</div>
+        <div v-if="item.content" class="task-desc">{{ item.content }}</div>
       </div>
     </div>
   </div>
@@ -74,9 +109,6 @@ function formatDate(ts: number): string {
 
 <style scoped>
 .task-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
   padding: 12px 16px;
   background: #fff;
   border-radius: 12px;
@@ -85,11 +117,13 @@ function formatDate(ts: number): string {
   font-size: var(--task-font-size, 14px);
   font-family: var(--task-font-family, inherit);
   transition: box-shadow 0.2s;
-  cursor: default;
+  cursor: pointer;
 }
 
 .task-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border-color: #4A90D9;
+  transform: scale(1.01);
 }
 
 html.dark .task-card {
@@ -101,17 +135,11 @@ html.dark .task-card:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.task-check {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #ccc;
-  border-radius: 4px;
-  flex-shrink: 0;
-  margin-top: 2px;
+.task-card:active {
+  transform: scale(0.99);
 }
 
 .task-content {
-  flex: 1;
   min-width: 0;
 }
 
@@ -120,6 +148,14 @@ html.dark .task-card:hover {
   font-weight: 500;
   color: #333;
   word-break: break-all;
+}
+
+.task-card:hover .task-title {
+  color: #FFB800;
+}
+
+html.dark .task-card:hover .task-title {
+  color: #FFB800;
 }
 
 html.dark .task-title {
@@ -144,8 +180,11 @@ html.dark .task-desc {
   color: #999;
 }
 
+.image-only {
+  width: 100%;
+}
+
 .task-thumbnail {
-  margin-top: 8px;
   max-width: 200px;
   border-radius: 8px;
   overflow: hidden;
@@ -154,41 +193,5 @@ html.dark .task-desc {
 .task-thumbnail img {
   width: 100%;
   display: block;
-}
-
-.task-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: calc(var(--task-font-size, 14px) * 0.857);
-}
-
-.task-stars {
-  display: flex;
-  gap: 2px;
-}
-
-.task-stars .star {
-  color: #ddd;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.task-stars .star.filled {
-  color: #FFB800;
-}
-
-.task-stars .star:hover {
-  color: #FFB800;
-}
-
-.task-time {
-  color: #888;
-  flex: 1;
-}
-
-html.dark .task-time {
-  color: #999;
 }
 </style>

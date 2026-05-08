@@ -127,28 +127,6 @@ function cancelDescEdit() {
   editDescValue.value = '';
 }
 
-// 处理描述输入，自动添加编号
-function handleDescInput(e: Event) {
-  const textarea = e.target as HTMLTextAreaElement;
-  const value = textarea.value;
-  const lines = value.split('\n');
-
-  // 检查每行是否有编号，如果没有则添加
-  const processedLines = lines.map((line, index) => {
-    // 如果行是空的，保持空行
-    if (line.trim() === '') return line;
-    // 如果行已经有编号格式（如 "1、" "2、"），保持原样
-    if (/^\d+、/.test(line)) return line;
-    // 否则添加编号
-    return `${index + 1}、${line.replace(/^\d+、/, '')}`;
-  });
-
-  const newValue = processedLines.join('\n');
-  if (newValue !== value) {
-    editDescValue.value = newValue;
-  }
-}
-
 // 按下回车时，在新行添加下一个编号
 function handleDescKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -705,7 +683,6 @@ function handleToggleStatus() {
           @blur="saveDesc"
           @keydown="handleDescKeydown"
           @keyup.escape="cancelDescEdit"
-          @input="handleDescInput"
           @click.stop
         />
       </div>
@@ -779,7 +756,9 @@ html.dark .simple-card {
 }
 
 .simple-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border-color: #4A90D9;
+  transform: scale(1.01);
 }
 
 html.dark .simple-card:hover {
@@ -952,6 +931,14 @@ html.dark .thumbnail-wrapper {
 
 html.dark .task-title {
   color: #e0e0e0;
+}
+
+.simple-card:hover .task-title {
+  color: #FFB800;
+}
+
+html.dark .simple-card:hover .task-title {
+  color: #FFB800;
 }
 
 .simple-card.done .task-title {

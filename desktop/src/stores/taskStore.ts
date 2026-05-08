@@ -78,7 +78,24 @@ export const useTaskStore = defineStore('task', () => {
   function toggleStatus(task: Task) {
     const newStatus = task.status === 'done' ? 'todo' : 'done';
     task.status = newStatus as 'todo' | 'done';
+    // 完成时排到未完成任务尾部，取消完成时排到顶部
+    if (newStatus === 'done') {
+      const todoTasks = tasks.value.filter(t => t.status !== 'done');
+      const maxSort = todoTasks.length > 0
+        ? Math.max(...todoTasks.map(t => t.sortOrder))
+        : (tasks.value.length > 0 ? Math.max(...tasks.value.filter(t => t.status === 'done').map(t => t.sortOrder)) : 0);
+      task.sortOrder = maxSort + 1;
+    } else {
+      // 取消完成时排到未完成任务顶部
+      const todoTasks = tasks.value.filter(t => t.status !== 'done');
+      const minSort = todoTasks.length > 0
+        ? Math.min(...todoTasks.map(t => t.sortOrder))
+        : 0;
+      task.sortOrder = minSort - 1;
+    }
     update(task);
+    // 重新排序以确保 UI 响应式更新
+    tasks.value = [...tasks.value].sort((a, b) => a.sortOrder - b.sortOrder);
   }
 
   return {
