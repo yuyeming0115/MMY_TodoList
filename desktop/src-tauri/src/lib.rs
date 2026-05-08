@@ -105,6 +105,9 @@ pub fn run() {
             commands::update_clipboard_item,
             commands::delete_clipboard_item,
             commands::reorder_clipboard_items,
+            commands::read_clipboard_image_file,
+            commands::set_clipboard_item_expiry,
+            commands::cleanup_expired_items,
             // 系统托盘
             hide_to_tray,
             // 工具命令

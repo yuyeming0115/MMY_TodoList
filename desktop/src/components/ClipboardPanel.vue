@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, h } from 'vue';
 import { NDropdown, NIcon, NInput, useMessage } from 'naive-ui';
-import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon } from '@vicons/ionicons5';
+import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, TimeOutline as TimeIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import ClipboardItemCard from './ClipboardItemCard.vue';
@@ -14,6 +14,7 @@ const message = useMessage();
 const props = defineProps<{
   compact?: boolean;
   categoryFilter?: string | null;
+  stacked?: boolean;
 }>();
 
 const isDragging = ref(false);
@@ -92,6 +93,35 @@ const isEditing = ref(false);
 const editTitle = ref('');
 const editContent = ref('');
 
+// 清理已过期项目
+async function cleanupExpired() {
+  const count = await clipboardStore.cleanupExpiredItems();
+  if (count > 0) {
+    message.success(`已清理 ${count} 个过期项目`);
+  } else {
+    message.info('没有已过期项目');
+  }
+}
+
+// 列表右键菜单
+const listMenuShow = ref(false);
+const listMenuX = ref(0);
+const listMenuY = ref(0);
+
+function handleListContextMenu(e: MouseEvent) {
+  e.preventDefault();
+  listMenuX.value = e.clientX;
+  listMenuY.value = e.clientY;
+  listMenuShow.value = true;
+}
+
+async function handleListMenuSelect(key: string) {
+  listMenuShow.value = false;
+  if (key === 'cleanup') {
+    await cleanupExpired();
+  }
+}
+
 async function handleContextMenuSelect(key: string) {
   contextMenuShow.value = false;
   if (!contextMenuItem.value) return;
@@ -146,8 +176,11 @@ function cancelEdit() {
 </script>
 
 <template>
-  <div class="clipboard-list" :class="{ 'compact-list': props.compact }">
-    <div v-if="filteredItems.length === 0" class="empty">暂无剪贴板记录</div>
+  <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" @contextmenu="handleListContextMenu">
+    <div v-if="filteredItems.length === 0" class="empty">
+      暂无剪贴板记录
+      <button class="cleanup-btn" @click="cleanupExpired">清理已过期项目</button>
+    </div>
     <draggable
       v-else
       v-model="dragList"
@@ -167,6 +200,7 @@ function cancelEdit() {
           <ClipboardItemCard
             :item="element"
             :compact="props.compact"
+            :stacked="props.stacked"
             @delete="deleteItem"
             @update-priority="updatePriority"
             @contextmenu="handleItemContextMenu($event, element)"
@@ -216,6 +250,20 @@ function cancelEdit() {
         </div>
       </template>
     </NDropdown>
+
+    <!-- 列表右键菜单 -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="listMenuX"
+      :y="listMenuY"
+      :show="listMenuShow"
+      :options="[
+        { label: '清理已过期项目', key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 14 }) }
+      ]"
+      @select="handleListMenuSelect"
+      @clickoutside="listMenuShow = false"
+    />
   </div>
 </template>
 
@@ -272,6 +320,34 @@ html.dark .clipboard-list:hover::-webkit-scrollbar-thumb {
   color: #888;
 }
 
+.cleanup-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px 16px;
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cleanup-btn:hover {
+  border-color: #E05252;
+  color: #E05252;
+}
+
+html.dark .cleanup-btn {
+  border-color: #444;
+  color: #777;
+}
+
+html.dark .cleanup-btn:hover {
+  border-color: #E05252;
+  color: #E05252;
+}
+
 /* 拖拽动画 */
 .ghost {
   opacity: 0.2;
@@ -290,6 +366,30 @@ html.dark .clipboard-list:hover::-webkit-scrollbar-thumb {
   box-shadow: 0 16px 40px rgba(74, 144, 217, 0.3);
   border-radius: 12px;
   transform: scale(1.03) rotate(1deg);
+}
+
+/* 层叠模式间距 */
+.stacked-list .item-wrapper {
+  margin-bottom: -10px;
+  transition: transform 0.2s ease, z-index 0s;
+}
+
+.stacked-list .item-wrapper:nth-child(odd) {
+  margin-left: 2px;
+}
+
+.stacked-list .item-wrapper:nth-child(even) {
+  margin-left: -2px;
+}
+
+.stacked-list .item-wrapper:hover {
+  z-index: 100;
+  transform: translateY(-8px) scale(1.02);
+}
+
+/* 层叠模式下禁用卡片自身 hover transform（穿透子组件 scoped） */
+:deep(.task-card.stacked:hover) {
+  transform: none !important;
 }
 
 /* 编辑弹窗 */

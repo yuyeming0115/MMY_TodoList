@@ -175,6 +175,7 @@ export const useClipboardStore = defineStore('clipboard', () => {
     const item = await addClipboardItem({
       ...itemData,
       sortOrder: newSortOrder,
+      expiresAt: itemData.expiresAt || null,
     });
     items.value.unshift(item);
     return item;
@@ -196,6 +197,22 @@ export const useClipboardStore = defineStore('clipboard', () => {
     await load();
   }
 
+  // 设置项目过期时间
+  async function setItemExpiry(id: string, expiresAt: number | null): Promise<void> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('set_clipboard_item_expiry', { id, expiresAt });
+    const index = items.value.findIndex(i => i.id === id);
+    if (index !== -1) items.value[index].expiresAt = expiresAt;
+  }
+
+  // 清理已过期项目
+  async function cleanupExpiredItems(): Promise<number> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const count = await invoke<number>('cleanup_expired_items');
+    await load();
+    return count;
+  }
+
   // 收藏/取消收藏项目，返回操作结果：'favorited' | 'unfavorited' | 'error'
   async function favoriteItem(item: ClipboardItem): Promise<'favorited' | 'unfavorited' | 'error'> {
     const favoriteCat = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
@@ -206,13 +223,16 @@ export const useClipboardStore = defineStore('clipboard', () => {
       const textCat = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.TEXT);
       if (!textCat) return 'error';
       item.categoryId = textCat.id;
+      // 恢复默认30天过期
+      item.expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
       await updateClipboardItem(item);
       const index = items.value.findIndex(i => i.id === item.id);
       if (index !== -1) items.value[index] = item;
       return 'unfavorited';
     } else {
-      // 移动到收藏分类
+      // 移动到收藏分类，清除过期时间（收藏永不过期）
       item.categoryId = favoriteCat.id;
+      item.expiresAt = null;
       await updateClipboardItem(item);
       const index = items.value.findIndex(i => i.id === item.id);
       if (index !== -1) items.value[index] = item;
@@ -233,11 +253,14 @@ export const useClipboardStore = defineStore('clipboard', () => {
       const text = await navigator.clipboard.readText();
       if (text) {
         const title = text.length > 30 ? text.substring(0, 30) + '...' : text;
+        // 文本默认30天过期
+        const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
         const result = await addItem({
           categoryId: textCategoryId,
           title,
           content: text,
           priority: 2,
+          expiresAt,
         });
         if (result) {
           message?.success('已粘贴文本');
@@ -253,23 +276,32 @@ export const useClipboardStore = defineStore('clipboard', () => {
       for (const item of clipItems) {
         if (item.types.includes('image/png') || item.types.includes('image/jpeg')) {
           const blob = await item.getType(item.types.find(t => t.startsWith('image/'))!);
-          const reader = new FileReader();
-          reader.onloadend = async () => {
-            const base64 = reader.result as string;
-            const result = await addItem({
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+
+          // 图片通过后端存文件，前端只传 base64
+          const { invoke } = await import('@tauri-apps/api/core');
+          const minSortOrder = items.value.length > 0
+            ? Math.min(...items.value.map(i => i.sortOrder))
+            : 0;
+          // 图片默认7天过期
+          const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
+          const newItem = await invoke<any>('add_clipboard_item', {
+            item: {
               categoryId: imageCategoryId,
               title: '剪贴板图片',
               content: '',
               imageBase64: base64,
               priority: 2,
-            });
-            if (result) {
-              message?.success('已粘贴图片');
-            } else {
-              message?.warning('图片已存在');
-            }
-          };
-          reader.readAsDataURL(blob);
+              sortOrder: minSortOrder - 1,
+              expiresAt,
+            },
+          });
+          items.value.unshift(newItem);
+          message?.success('已粘贴图片');
           return;
         }
       }
@@ -300,5 +332,7 @@ export const useClipboardStore = defineStore('clipboard', () => {
     reorderItems,
     pasteFromClipboard,
     favoriteItem,
+    setItemExpiry,
+    cleanupExpiredItems,
   };
 });

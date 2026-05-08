@@ -192,8 +192,11 @@ pub struct NewClipboardItem {
     pub title: String,
     pub content: String,
     pub image_base64: Option<String>,
+    pub image_path: Option<String>,
+    pub thumbnail_base64: Option<String>,
     pub priority: i32,
     pub sort_order: i32,
+    pub expires_at: Option<i64>,
 }
 
 #[tauri::command]
@@ -205,9 +208,12 @@ pub fn add_clipboard_item(db: State<'_, Arc<Database>>, item: NewClipboardItem) 
         title: item.title,
         content: item.content,
         image_base64: item.image_base64,
+        image_path: item.image_path,
+        thumbnail_base64: item.thumbnail_base64,
         priority: item.priority,
         sort_order: item.sort_order,
         created_at: now,
+        expires_at: item.expires_at,
     };
     db.add_clipboard_item(&full_item).map_err(|e| e.to_string())?;
     Ok(full_item)
@@ -226,4 +232,57 @@ pub fn delete_clipboard_item(db: State<'_, Arc<Database>>, id: String) -> Result
 #[tauri::command]
 pub fn reorder_clipboard_items(db: State<'_, Arc<Database>>, ids: Vec<String>) -> Result<(), String> {
     db.reorder_clipboard_items(&ids).map_err(|e| e.to_string())
+}
+
+/// 读取剪贴板图片文件（返回 base64 data URL）
+#[tauri::command]
+pub fn read_clipboard_image_file(db: State<'_, Arc<Database>>, path: String) -> Result<String, String> {
+    let bytes = db.read_clipboard_image_file(&path).map_err(|e| e.to_string())?;
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+    Ok(format!("data:image/png;base64,{}", b64))
+}
+
+/// 设置剪贴板项目过期时间
+#[tauri::command]
+pub fn set_clipboard_item_expiry(db: State<'_, Arc<Database>>, id: String, expires_at: Option<i64>) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE clipboard_items SET expires_at = ?1 WHERE id = ?2",
+        rusqlite::params![&expires_at, &id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 清理所有已过期项目
+#[tauri::command]
+pub fn cleanup_expired_items(db: State<'_, Arc<Database>>) -> Result<i64, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+
+    // 获取需要删除的项目的图片 path
+    let mut stmt = conn.prepare(
+        "SELECT image_path FROM clipboard_items WHERE expires_at IS NOT NULL AND expires_at <= ?1"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([now], |row| row.get(0)).map_err(|e| e.to_string())?;
+    let paths: Vec<Option<String>> = rows.filter_map(|r| r.ok()).collect();
+
+    let deleted = conn.execute(
+        "DELETE FROM clipboard_items WHERE expires_at IS NOT NULL AND expires_at <= ?1",
+        [&now.to_string()],
+    ).map_err(|e| e.to_string())?;
+
+    // 删除对应的图片文件
+    for path_opt in paths {
+        if let Some(path) = path_opt {
+            let p = std::path::PathBuf::from(&path);
+            if p.exists() {
+                std::fs::remove_file(p).ok();
+            }
+        }
+    }
+
+    Ok(deleted as i64)
 }

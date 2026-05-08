@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 use uuid::Uuid;
+use image::GenericImageView;
 use crate::models::{Category, Task, AppSettings, ClipboardCategory, ClipboardItem};
 
 pub struct Database {
@@ -66,7 +67,8 @@ impl Database {
                 window_x INTEGER,
                 window_y INTEGER,
                 font_size INTEGER DEFAULT 14,
-                font_family TEXT DEFAULT ''
+                font_family TEXT DEFAULT '',
+                clipboard_view_mode TEXT DEFAULT 'normal'
             )",
             [],
         )?;
@@ -86,6 +88,10 @@ impl Database {
         ).ok();
         conn.execute(
             "ALTER TABLE settings ADD COLUMN font_family TEXT DEFAULT ''",
+            [],
+        ).ok();
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN clipboard_view_mode TEXT DEFAULT 'normal'",
             [],
         ).ok();
 
@@ -115,12 +121,20 @@ impl Database {
                 title TEXT NOT NULL,
                 content TEXT NOT NULL,
                 image_base64 TEXT,
+                image_path TEXT,
+                thumbnail_base64 TEXT,
                 priority INTEGER DEFAULT 1,
                 sort_order INTEGER DEFAULT 0,
-                created_at INTEGER
+                created_at INTEGER,
+                expires_at INTEGER
             )",
             [],
         )?;
+
+        // 迁移：为已有数据库添加新列
+        conn.execute("ALTER TABLE clipboard_items ADD COLUMN image_path TEXT", []).ok();
+        conn.execute("ALTER TABLE clipboard_items ADD COLUMN thumbnail_base64 TEXT", []).ok();
+        conn.execute("ALTER TABLE clipboard_items ADD COLUMN expires_at INTEGER", []).ok();
 
         // 初始化默认剪贴板分类（文本、图像、收藏）
         let cb_count: i64 = conn.query_row("SELECT COUNT(*) FROM clipboard_categories", [], |r| r.get(0))?;
@@ -191,6 +205,19 @@ impl Database {
                 }
             }
         }
+
+        // 启动时清理过期剪贴板项目
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        conn.execute(
+            "DELETE FROM clipboard_items WHERE expires_at IS NOT NULL AND expires_at <= ?1",
+            [&now.to_string()],
+        ).ok();
+
+        // 清理孤立图片文件（可选：扫描数据库，删除不在数据库中的图片文件）
+        // 为性能考虑，此操作暂不自动执行
 
         // 初始化默认分类（仅当数据库中没有任何分类时）
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM categories", [], |r| r.get(0))?;
@@ -419,7 +446,7 @@ impl Database {
     pub fn get_settings(&self) -> SqliteResult<AppSettings> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT theme_mode, language, hide_completed_tasks, launch_at_startup, window_width, window_height, window_x, window_y, font_size, font_family FROM settings WHERE id = 1",
+            "SELECT theme_mode, language, hide_completed_tasks, launch_at_startup, window_width, window_height, window_x, window_y, font_size, font_family, clipboard_view_mode FROM settings WHERE id = 1",
             [],
             |row| Ok(AppSettings {
                 theme_mode: row.get(0)?,
@@ -432,6 +459,7 @@ impl Database {
                 window_y: row.get::<_, Option<i32>>(7)?,
                 font_size: row.get::<_, i32>(8)?,
                 font_family: row.get(9)?,
+                clipboard_view_mode: row.get(10).unwrap_or_else(|_| "normal".to_string()),
             }),
         )
     }
@@ -439,7 +467,7 @@ impl Database {
     pub fn update_settings(&self, settings: &AppSettings) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE settings SET theme_mode = ?1, language = ?2, hide_completed_tasks = ?3, launch_at_startup = ?4, window_width = ?5, window_height = ?6, window_x = ?7, window_y = ?8, font_size = ?9, font_family = ?10 WHERE id = 1",
+            "UPDATE settings SET theme_mode = ?1, language = ?2, hide_completed_tasks = ?3, launch_at_startup = ?4, window_width = ?5, window_height = ?6, window_x = ?7, window_y = ?8, font_size = ?9, font_family = ?10, clipboard_view_mode = ?11 WHERE id = 1",
             rusqlite::params![
                 &settings.theme_mode,
                 &settings.language,
@@ -451,6 +479,7 @@ impl Database {
                 &settings.window_y,
                 &settings.font_size,
                 &settings.font_family,
+                &settings.clipboard_view_mode,
             ],
         )?;
         Ok(())
@@ -524,20 +553,27 @@ impl Database {
     // 剪贴板项目操作
     pub fn get_clipboard_items(&self) -> SqliteResult<Vec<ClipboardItem>> {
         let conn = self.conn.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
         let mut stmt = conn.prepare(
-            "SELECT id, category_id, title, content, image_base64, priority, sort_order, created_at FROM clipboard_items ORDER BY sort_order"
+            "SELECT id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1 ORDER BY sort_order"
         )?;
 
-        let items = stmt.query_map([], |row| {
+        let items = stmt.query_map([now], |row| {
             Ok(ClipboardItem {
                 id: row.get(0)?,
                 category_id: row.get(1)?,
                 title: row.get(2)?,
                 content: row.get(3)?,
                 image_base64: row.get(4)?,
-                priority: row.get(5)?,
-                sort_order: row.get(6)?,
-                created_at: row.get(7)?,
+                image_path: row.get(5)?,
+                thumbnail_base64: row.get(6)?,
+                priority: row.get(7)?,
+                sort_order: row.get(8)?,
+                created_at: row.get(9)?,
+                expires_at: row.get(10)?,
             })
         })?.collect::<SqliteResult<Vec<ClipboardItem>>>();
 
@@ -547,16 +583,19 @@ impl Database {
     pub fn add_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 &item.id,
                 &item.category_id,
                 &item.title,
                 &item.content,
                 &item.image_base64,
+                &item.image_path,
+                &item.thumbnail_base64,
                 &item.priority,
                 &item.sort_order,
                 &item.created_at,
+                &item.expires_at,
             ],
         )?;
         Ok(())
@@ -565,14 +604,17 @@ impl Database {
     pub fn update_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE clipboard_items SET category_id = ?1, title = ?2, content = ?3, image_base64 = ?4, priority = ?5, sort_order = ?6 WHERE id = ?7",
+            "UPDATE clipboard_items SET category_id = ?1, title = ?2, content = ?3, image_base64 = ?4, image_path = ?5, thumbnail_base64 = ?6, priority = ?7, sort_order = ?8, expires_at = ?9 WHERE id = ?10",
             rusqlite::params![
                 &item.category_id,
                 &item.title,
                 &item.content,
                 &item.image_base64,
+                &item.image_path,
+                &item.thumbnail_base64,
                 &item.priority,
                 &item.sort_order,
+                &item.expires_at,
                 &item.id,
             ],
         )?;
@@ -581,7 +623,20 @@ impl Database {
 
     pub fn delete_clipboard_item(&self, id: &str) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
+        // Get image_path before deleting
+        let image_path: Option<String> = conn.query_row(
+            "SELECT image_path FROM clipboard_items WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        ).ok();
         conn.execute("DELETE FROM clipboard_items WHERE id = ?1", [id])?;
+        // Delete image file if it exists
+        if let Some(path) = image_path {
+            let p = std::path::PathBuf::from(&path);
+            if p.exists() {
+                std::fs::remove_file(p).ok();
+            }
+        }
         Ok(())
     }
 
@@ -622,8 +677,9 @@ impl Database {
             content.to_string()
         };
 
-        // 使用内置"文本"分类 ID
+        // 使用内置"文本"分类 ID，30 天过期
         let category_id = "builtin_text";
+        let expires_at = now + (30 * 24 * 60 * 60 * 1000);
 
         // 获取最小 sort_order，新内容放在最前面
         let min_order: i32 = conn.query_row(
@@ -634,9 +690,9 @@ impl Database {
 
         // 使用 INSERT OR IGNORE 防止竞态重复
         let affected = conn.execute(
-            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at)
-             VALUES (?1, ?2, ?3, ?4, NULL, 2, ?5, ?6)",
-            rusqlite::params![&id, category_id, &title, content, min_order - 1, &now],
+            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, NULL, NULL, NULL, 2, ?5, ?6, ?7)",
+            rusqlite::params![&id, category_id, &title, content, min_order - 1, &now, expires_at],
         )?;
         if affected == 0 {
             return Err(rusqlite::Error::QueryReturnedNoRows);
@@ -646,17 +702,22 @@ impl Database {
 
     /// 自动保存图片剪贴板内容（用于后台监控）
     pub fn add_auto_clipboard_image(&self, image_base64: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
         let id = Uuid::new_v4().to_string();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as i64;
 
+        // 7 天过期
+        let expires_at = now + (7 * 24 * 60 * 60 * 1000);
+
+        let (image_path, thumbnail_base64) = self.save_clipboard_image(&id, image_base64)?;
+
         // 使用内置"图像"分类 ID
         let category_id = "builtin_image";
 
         // 获取最小 sort_order
+        let conn = self.conn.lock().unwrap();
         let min_order: i32 = conn.query_row(
             "SELECT COALESCE(MIN(sort_order), 0) FROM clipboard_items",
             [],
@@ -665,13 +726,85 @@ impl Database {
 
         // 使用 INSERT OR IGNORE 防止竞态重复
         let affected = conn.execute(
-            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, priority, sort_order, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 2, ?6, ?7)",
-            rusqlite::params![&id, category_id, "剪贴板图片", "", image_base64, min_order - 1, &now],
+            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 2, ?8, ?9, ?10)",
+            rusqlite::params![&id, category_id, "剪贴板图片", "", "", image_path, thumbnail_base64, min_order - 1, &now, expires_at],
         )?;
         if affected == 0 {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
         Ok(())
+    }
+
+    /// 保存剪贴板图片到文件系统，返回 (文件路径, 缩略图 base64)
+    pub fn save_clipboard_image(&self, id: &str, image_base64: &str) -> SqliteResult<(String, String)> {
+        // 去掉 data:image/...;base64, 前缀
+        let base64_data = if let Some(idx) = image_base64.find(",") {
+            &image_base64[idx + 1..]
+        } else {
+            image_base64
+        };
+
+        let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e))))?;
+
+        // 获取应用数据目录
+        let app_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let img_dir = app_dir.join("clipboard_images");
+        std::fs::create_dir_all(&img_dir).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        let file_path = img_dir.join(format!("{}.png", id));
+        let file_path_str = file_path.to_str().unwrap_or("").to_string();
+
+        // 保存原图
+        std::fs::write(&file_path, &decoded)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        // 生成缩略图（最大宽度 300px）
+        let thumbnail_base64 = self.generate_thumbnail(&decoded)?;
+
+        Ok((file_path_str, thumbnail_base64))
+    }
+
+    /// 生成缩略图 base64（最大宽度 300px）
+    fn generate_thumbnail(&self, image_data: &[u8]) -> SqliteResult<String> {
+        use base64::Engine;
+        use image::ImageReader;
+
+        let img = ImageReader::new(std::io::Cursor::new(image_data))
+            .with_guessed_format()
+            .ok()
+            .and_then(|r| r.decode().ok())
+            .ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "无法解码图片"))))?;
+
+        let (width, height) = img.dimensions();
+        let max_width: u32 = 300;
+        let thumbnail = if width > max_width {
+            let new_height = (max_width as f32 / width as f32 * height as f32) as u32;
+            img.resize(max_width, new_height, image::imageops::FilterType::Lanczos3)
+        } else {
+            img
+        };
+
+        let mut thumbnail_buf = Vec::new();
+        thumbnail.write_to(
+            &mut std::io::Cursor::new(&mut thumbnail_buf),
+            image::ImageFormat::Png,
+        ).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        let thumbnail_b64 = base64::engine::general_purpose::STANDARD.encode(&thumbnail_buf);
+        Ok(format!("data:image/png;base64,{}", thumbnail_b64))
+    }
+
+    /// 根据文件路径读取原图字节（用于写入系统剪贴板）
+    pub fn read_clipboard_image_file(&self, path: &str) -> SqliteResult<Vec<u8>> {
+        let p = std::path::PathBuf::from(path);
+        if !p.exists() {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        std::fs::read(&p).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
     }
 }

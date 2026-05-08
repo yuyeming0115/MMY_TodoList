@@ -10,7 +10,8 @@ export const useSettingsStore = defineStore('settings', () => {
     hideCompletedTasks: false,
     launchAtStartup: false,
     fontSize: 14,
-    fontFamily: ''
+    fontFamily: '',
+    clipboardViewMode: 'normal',
   });
 
   async function load() {
@@ -54,6 +55,10 @@ export const useSettingsStore = defineStore('settings', () => {
     update({ fontFamily: family });
   }
 
+  function setClipboardViewMode(mode: 'normal' | 'stacked') {
+    update({ clipboardViewMode: mode });
+  }
+
   return {
     settings,
     load,
@@ -65,6 +70,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setWindowSize,
     setWindowPosition,
     setFontSize,
-    setFontFamily
+    setFontFamily,
+    setClipboardViewMode,
   };
 });

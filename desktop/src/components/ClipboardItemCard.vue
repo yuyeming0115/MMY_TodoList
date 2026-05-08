@@ -3,7 +3,7 @@ import { NIcon, NDropdown, NInput, useMessage } from 'naive-ui';
 import { h, ref, computed, nextTick } from 'vue';
 import {
   TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon,
-  CreateOutline as EditIcon
+  CreateOutline as EditIcon, TimeOutline as TimeIcon
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
@@ -12,6 +12,7 @@ import { BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 const props = defineProps<{
   item: ClipboardItem;
   compact?: boolean;
+  stacked?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -27,7 +28,32 @@ const contextMenuX = ref(0);
 const contextMenuY = ref(0);
 
 const isFavorite = computed(() => props.item.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
-const isTextItem = computed(() => !props.item.imageBase64);
+const isTextItem = computed(() => !props.item.imageBase64 && !props.item.imagePath);
+const isBuiltinCategory = computed(() =>
+  ([BUILTIN_CLIPBOARD_CATEGORIES.TEXT, BUILTIN_CLIPBOARD_CATEGORIES.IMAGE] as string[]).includes(props.item.categoryId)
+);
+
+// 过期时间相关
+const expiryLabel = computed(() => {
+  if (!props.item.expiresAt) return null;
+  const now = Date.now();
+  const diff = props.item.expiresAt - now;
+  if (diff <= 0) return null;
+
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}天后过期`;
+  if (hours > 0) return `${hours}小时后过期`;
+  const mins = Math.floor(diff / (1000 * 60));
+  return `${mins}分钟后过期`;
+});
+
+const isExpiringSoon = computed(() => {
+  if (!props.item.expiresAt) return false;
+  const diff = props.item.expiresAt - Date.now();
+  return diff > 0 && diff < 24 * 60 * 60 * 1000;
+});
 
 const displayContent = computed(() => {
   if (!props.compact) return props.item.content;
@@ -53,6 +79,22 @@ const contextMenuOptions = computed(() => {
     options.push({ label: '编辑', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 16 }) });
   }
 
+  // 内置分类（文本/图像）且非收藏，显示设置过期时间
+  if (isBuiltinCategory.value && !isFavorite.value) {
+    options.push({
+      key: 'expiry',
+      label: '设置过期时间',
+      icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
+      children: [
+        { label: '1小时', key: 'expiry_1h' },
+        { label: '1天', key: 'expiry_1d' },
+        { label: '7天', key: 'expiry_7d' },
+        { label: '30天', key: 'expiry_30d' },
+        { label: '永不过期', key: 'expiry_never' },
+      ],
+    });
+  }
+
   options.push({ type: 'divider', key: 'd1' });
   options.push({ label: '删除', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
   return options;
@@ -60,7 +102,14 @@ const contextMenuOptions = computed(() => {
 
 async function copyContent() {
   try {
-    if (props.item.imageBase64) {
+    // 如果有 imagePath，从文件读取原图
+    if (props.item.imagePath) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const base64 = await invoke<string>('read_clipboard_image_file', { path: props.item.imagePath });
+      const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
+      await invoke('write_image_to_clipboard', { base64: base64Data });
+      message.success('已复制图片');
+    } else if (props.item.imageBase64) {
       const { invoke } = await import('@tauri-apps/api/core');
       const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
       await invoke('write_image_to_clipboard', { base64: base64Data });
@@ -111,12 +160,28 @@ function handleContextMenu(e: MouseEvent) {
   showContextMenu.value = true;
 }
 
+function setExpiry(key: string) {
+  const now = Date.now();
+  let expiresAt: number | null = null;
+  switch (key) {
+    case 'expiry_1h': expiresAt = now + 1 * 60 * 60 * 1000; break;
+    case 'expiry_1d': expiresAt = now + 1 * 24 * 60 * 60 * 1000; break;
+    case 'expiry_7d': expiresAt = now + 7 * 24 * 60 * 60 * 1000; break;
+    case 'expiry_30d': expiresAt = now + 30 * 24 * 60 * 60 * 1000; break;
+    case 'expiry_never': expiresAt = null; break;
+  }
+  clipboardStore.setItemExpiry(props.item.id, expiresAt);
+  const label = { expiry_1h: '1小时', expiry_1d: '1天', expiry_7d: '7天', expiry_30d: '30天', expiry_never: '永不过期' }[key];
+  message.success(`已设置：${label}`);
+}
+
 function handleMenuSelect(key: string) {
   showContextMenu.value = false;
   if (key === 'copy') copyContent();
   if (key === 'favorite') handleFavorite();
   if (key === 'edit') startEdit();
   if (key === 'delete') emit('delete', props.item.id);
+  if (key.startsWith('expiry_')) setExpiry(key);
 }
 
 async function startEdit() {
@@ -161,17 +226,17 @@ function cancelEdit() {
     @select="handleMenuSelect"
     @clickoutside="showContextMenu = false"
   />
-  <div class="task-card" :class="{ compact: props.compact }" @click="handleClick" @contextmenu="handleContextMenu">
+  <div class="task-card" :class="{ compact: props.compact, expiring: isExpiringSoon, stacked: props.stacked }" @click="handleClick" @contextmenu="handleContextMenu">
     <div class="task-content">
-      <!-- 纯图片：只显示图片 -->
-      <div v-if="item.imageBase64" class="image-only">
+      <!-- 纯图片：显示缩略图（优先用 thumbnailBase64，回退到 imageBase64） -->
+      <div v-if="item.imagePath || item.imageBase64" class="image-only">
         <div class="task-thumbnail" :class="{ 'compact-thumb': props.compact }">
-          <img :src="item.imageBase64" alt="剪贴板图片" />
+          <img :src="item.thumbnailBase64 || item.imageBase64" alt="剪贴板图片" />
         </div>
       </div>
 
       <!-- 文本：标题 + 内容 -->
-      <div v-if="!item.imageBase64">
+      <div v-if="!item.imagePath && !item.imageBase64">
         <!-- 编辑模式 -->
         <div v-if="isEditing" class="edit-mode" @click.stop>
           <NInput
@@ -200,6 +265,12 @@ function cancelEdit() {
           <div v-if="item.content" class="task-desc">{{ displayContent }}</div>
         </template>
       </div>
+    </div>
+
+    <!-- 过期时间提示 -->
+    <div v-if="expiryLabel" class="expiry-badge" :class="{ warning: isExpiringSoon }">
+      <NIcon :component="TimeIcon" size="10" />
+      {{ expiryLabel }}
     </div>
   </div>
 </template>
@@ -240,6 +311,32 @@ html.dark .task-card:hover {
 
 .task-card:active {
   transform: scale(0.99);
+}
+
+/* 即将过期的卡片样式 */
+.task-card.expiring {
+  opacity: 0.7;
+}
+
+.task-card.expiring:hover {
+  opacity: 1;
+}
+
+/* 层叠模式卡片样式 */
+.task-card.stacked {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.task-card.stacked:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+html.dark .task-card.stacked {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+html.dark .task-card.stacked:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 /* 精简模式样式 */
@@ -399,5 +496,36 @@ html.dark .edit-btn.cancel {
 
 html.dark .edit-btn.cancel:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+
+/* 过期时间徽章 */
+.expiry-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  color: #999;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.expiry-badge.warning {
+  color: #E05252;
+  opacity: 1;
+}
+
+html.dark .expiry-badge {
+  color: #777;
+}
+
+html.dark .expiry-badge.warning {
+  color: #E05252;
+}
+
+.task-card {
+  position: relative;
 }
 </style>

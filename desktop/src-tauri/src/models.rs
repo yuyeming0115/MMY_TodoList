@@ -84,6 +84,7 @@ pub struct AppSettings {
     pub window_y: Option<i32>,
     pub font_size: i32,
     pub font_family: String,
+    pub clipboard_view_mode: String,
 }
 
 impl Default for AppSettings {
@@ -99,6 +100,7 @@ impl Default for AppSettings {
             window_y: None,
             font_size: 14,
             font_family: String::new(),
+            clipboard_view_mode: "normal".to_string(),
         }
     }
 }
@@ -133,9 +135,12 @@ pub struct ClipboardItem {
     pub title: String,
     pub content: String,
     pub image_base64: Option<String>,
+    pub image_path: Option<String>,
+    pub thumbnail_base64: Option<String>,
     pub priority: i32,
     pub sort_order: i32,
     pub created_at: i64,
+    pub expires_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

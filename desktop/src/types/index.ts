@@ -35,6 +35,7 @@ export interface AppSettings {
   windowY?: number;
   fontSize: number;
   fontFamily: string;
+  clipboardViewMode: 'normal' | 'stacked';
 }
 
 export interface ExportData {
@@ -60,9 +61,12 @@ export interface ClipboardItem {
   title: string;
   content: string;
   imageBase64?: string;
+  imagePath?: string;
+  thumbnailBase64?: string;
   priority: 1 | 2 | 3;
   sortOrder: number;
   createdAt: number;
+  expiresAt?: number | null;
 }
 
 // 内置分类 ID 常量（不可删除）

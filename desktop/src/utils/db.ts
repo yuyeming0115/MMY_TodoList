@@ -110,3 +110,15 @@ export async function deleteClipboardItem(id: string): Promise<void> {
 export async function reorderClipboardItems(ids: string[]): Promise<void> {
   return invoke('reorder_clipboard_items', { ids });
 }
+
+export async function readClipboardImageFile(path: string): Promise<string> {
+  return invoke('read_clipboard_image_file', { path });
+}
+
+export async function setClipboardItemExpiry(id: string, expiresAt: number | null): Promise<void> {
+  return invoke('set_clipboard_item_expiry', { id, expiresAt });
+}
+
+export async function cleanupExpiredItems(): Promise<number> {
+  return invoke('cleanup_expired_items');
+}

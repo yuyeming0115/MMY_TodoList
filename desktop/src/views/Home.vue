@@ -10,7 +10,7 @@ import {
   CloseOutline as CloseIcon, RemoveOutline as MinusIcon,
   ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon,
   ListOutline as ListIcon, ClipboardOutline as ClipboardIcon,
-  CopyOutline as CopyIcon
+  CopyOutline as CopyIcon, LayersOutline as StackedIcon
 } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
@@ -383,6 +383,13 @@ function toggleTheme() {
   settingsStore.setTheme(next);
 }
 
+// 剪贴板视图切换
+const isClipboardStacked = computed(() => settingsStore.settings.clipboardViewMode === 'stacked');
+
+function toggleClipboardView() {
+  settingsStore.setClipboardViewMode(isClipboardStacked.value ? 'normal' : 'stacked');
+}
+
 // 打开任务表单（改为快速添加空白任务）
 async function openAddTask() {
   await categoryStore.ensureDefaultCategory();
@@ -599,14 +606,26 @@ async function hideToTray() {
             <!-- 第二行：搜索栏 -->
             <div v-if="!isPinned" class="search-wrapper">
               <SearchBar v-if="activePanel === 'tasks'" />
-              <NInput
-                v-else-if="activePanel === 'clipboard'"
-                v-model:value="clipboardSearchQuery"
-                placeholder="搜索剪贴板..."
-                clearable size="small"
-                @update:value="onClipboardSearch"
-                @clear="clipboardSearchQuery = ''"
-              />
+              <div v-else-if="activePanel === 'clipboard'" class="clipboard-search-row">
+                <NInput
+                  v-model:value="clipboardSearchQuery"
+                  placeholder="搜索剪贴板..."
+                  clearable size="small"
+                  class="clipboard-search-input"
+                  @update:value="onClipboardSearch"
+                  @clear="clipboardSearchQuery = ''"
+                />
+                <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? '切换列表视图' : '切换层叠视图'">
+                  <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
+                </button>
+              </div>
+            </div>
+
+            <!-- 精简模式下剪贴板视图切换按钮（紧贴右侧，最小化占用） -->
+            <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clipboard-actions">
+              <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? '切换列表视图' : '切换层叠视图'">
+                <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
+              </button>
             </div>
           </div>
 
@@ -706,7 +725,7 @@ async function hideToTray() {
 
               <!-- 剪贴板面板 -->
               <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel" :class="{ 'compact-panel': isPinned }">
-                <ClipboardPanel :compact="isPinned" :category-filter="compactClipFilter" />
+                <ClipboardPanel :compact="isPinned" :category-filter="compactClipFilter" :stacked="isClipboardStacked" />
               </div>
 
               <!-- 设置页面 -->
@@ -755,6 +774,7 @@ html.dark, html.dark body, html.dark #app {
 
 /* 全局 Header（最上方，全宽） */
 .global-header {
+  position: relative;
   flex-shrink: 0;
   background: #f5f5f5;
   border-bottom: 1px solid #e0e0e0;
@@ -908,6 +928,7 @@ html.dark .header {
 
 /* 固定顶部区域 */
 .fixed-header {
+  position: relative;
   flex-shrink: 0;
   background: #f5f5f5 !important;
   border-bottom: 1px solid #e0e0e0;
@@ -1022,7 +1043,60 @@ html.dark .win-controls .win-btn:hover {
   padding: 4px 0 8px;
 }
 
-/* Header 中的操作按钮 */
+/* 剪贴板搜索行 */
+.clipboard-search-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.clipboard-search-row .clipboard-search-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.view-toggle-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(100, 100, 100, 0.1);
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-toggle-btn:hover {
+  background: rgba(100, 100, 100, 0.2);
+  color: #4A90D9;
+}
+
+html.dark .view-toggle-btn {
+  background: rgba(100, 100, 100, 0.2);
+  color: #777;
+}
+
+html.dark .view-toggle-btn:hover {
+  background: rgba(100, 100, 100, 0.3);
+  color: #4A90D9;
+}
+
+/* 精简模式下剪贴板操作栏 — 紧贴右侧，最小化占用 */
+.compact-clipboard-actions {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 200;
+}
+
+.view-toggle-btn.compact {
+  width: 28px;
+  height: 28px;
+}
 .header-action-btn {
   flex-shrink: 0;
   height: 28px;
