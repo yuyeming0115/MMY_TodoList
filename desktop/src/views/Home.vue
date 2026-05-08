@@ -488,7 +488,19 @@ function goBackToMain() {
 async function startWindowDrag(e: MouseEvent) {
   const target = e.target as HTMLElement;
   // 排除所有交互元素
-  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-checkbox, .n-switch, .tabs-wrapper')) {
+  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-checkbox, .n-switch')) {
+    return;
+  }
+  try {
+    await appWindow.startDragging();
+  } catch (_) {}
+}
+
+/// 分类标签区域拖拽（点击空白处拖拽窗口）
+async function startTabsDrag(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  // 只有点击在标签按钮上才不拖拽
+  if (target.closest('.tab-btn')) {
     return;
   }
   try {
@@ -518,12 +530,12 @@ async function hideToTray() {
               </div>
 
               <!-- 任务面板：分类 tabs -->
-              <div v-if="activePanel === 'tasks' && !isPinned" class="tabs-wrapper">
+              <div v-if="activePanel === 'tasks' && !isPinned" class="tabs-wrapper" @mousedown="startTabsDrag">
                 <CategoryTabs />
               </div>
 
               <!-- 剪贴板面板：分类 tabs -->
-              <div v-else-if="activePanel === 'clipboard' && !isPinned" class="tabs-wrapper">
+              <div v-else-if="activePanel === 'clipboard' && !isPinned" class="tabs-wrapper" @mousedown="startTabsDrag">
                 <ClipboardCategoryTabs />
               </div>
 
@@ -928,12 +940,14 @@ html.dark .header {
   app-region: no-drag;
 }
 
+/* 分类标签区域 - 通过 JS mousedown 处理拖拽，避免与 data-tauri-drag-region 冲突 */
 .tabs-wrapper {
-  -webkit-app-region: drag;
-  app-region: drag;
-  -webkit-user-select: none;
-  user-select: none;
   cursor: default;
+}
+
+/* 标签按钮本身可点击 */
+.tabs-wrapper .tab-btn {
+  cursor: pointer;
 }
 
 .pin-control {
