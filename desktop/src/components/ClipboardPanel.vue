@@ -327,6 +327,7 @@ function cancelEdit() {
       ]"
       @select="handleContextMenuSelect"
       @clickoutside="contextMenuShow = false"
+      style="z-index: 3000"
     />
 
     <!-- 编辑弹窗 -->
@@ -338,6 +339,7 @@ function cancelEdit() {
       :show="isEditing"
       :options="[]"
       @clickoutside="cancelEdit"
+      style="z-index: 3000"
     >
       <template #default>
         <div class="edit-popup" @click.stop>
@@ -363,6 +365,7 @@ function cancelEdit() {
       ]"
       @select="handleListMenuSelect"
       @clickoutside="listMenuShow = false"
+      style="z-index: 3100"
     />
   </div>
 </template>

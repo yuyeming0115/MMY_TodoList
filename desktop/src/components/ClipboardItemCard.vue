@@ -4,7 +4,7 @@ import { h, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import {
   TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon,
   CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
-  ReorderTwoOutline as DragIcon,
+  ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon,
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
@@ -116,6 +116,11 @@ const contextMenuOptions = computed(() => {
     options.push({ label: '编辑', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 16 }) });
   }
 
+  // 图片类型且有本地路径，显示"打开图片所在文件夹"
+  if (props.item.imagePath) {
+    options.push({ label: '打开图片所在文件夹', key: 'openFolder', icon: () => h(NIcon, { component: FolderOpenIcon, size: 16 }) });
+  }
+
   // 内置分类（文本/图像）且非收藏，显示设置过期时间
   if (isBuiltinCategory.value && !isFavorite.value) {
     options.push({
@@ -154,10 +159,19 @@ async function copyContent() {
     // 如果有 imagePath，从文件读取原图
     if (props.item.imagePath) {
       const { invoke } = await import('@tauri-apps/api/core');
-      const base64 = await invoke<string>('read_clipboard_image_file', { path: props.item.imagePath });
-      const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
-      await invoke('write_image_to_clipboard', { base64: base64Data });
-      message.success('已复制图片');
+
+      try {
+        const base64 = await invoke<string>('read_clipboard_image_file', { path: props.item.imagePath });
+        const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
+        await invoke('write_image_to_clipboard', { base64: base64Data });
+        message.success('已复制图片');
+      } catch (e) {
+        // 文件读取失败，说明文件已被删除
+        console.error('图片文件读取失败:', e);
+        message.warning('图片文件已被删除，卡片已自动清理');
+        emit('delete', props.item.id);
+        return;
+      }
     } else if (props.item.imageBase64) {
       const { invoke } = await import('@tauri-apps/api/core');
       const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
@@ -168,6 +182,7 @@ async function copyContent() {
       message.success('已复制');
     }
   } catch (e) {
+    // 其他复制失败情况
     if (props.item.content) {
       const ta = document.createElement('textarea');
       ta.value = props.item.content;
@@ -233,6 +248,7 @@ function handleMenuSelect(key: string) {
   if (key === 'copy') copyContent();
   if (key === 'favorite') handleFavorite();
   if (key === 'edit') startEdit();
+  if (key === 'openFolder') openImageFolder();
   if (key === 'delete') emit('delete', props.item.id);
   if (key === 'enter_select') emit('enter-select-mode');
   if (key.startsWith('move_')) {
@@ -249,6 +265,19 @@ async function startEdit() {
   editContent.value = props.item.content;
   await nextTick();
   editTextareaRef.value?.focus();
+}
+
+// 打开图片所在文件夹
+async function openImageFolder() {
+  if (!props.item.imagePath) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('reveal_file_in_folder', { path: props.item.imagePath });
+    message.success('已打开文件夹');
+  } catch (e) {
+    console.error('打开文件夹失败:', e);
+    message.error('打开文件夹失败');
+  }
 }
 
 function saveEdit() {

@@ -21,6 +21,7 @@
     "dialog:default",
     "fs:default",
     "fs:allow-read",
+    "fs:write-all",
     "clipboard-manager:default",
     "clipboard-manager:allow-read-image",
     "shell:default",

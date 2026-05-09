@@ -44,6 +44,8 @@ export interface ExportData {
   source: 'desktop';
   categories: Category[];
   tasks: Task[];
+  clipboardCategories: ClipboardCategory[];
+  clipboardItems: ClipboardItem[];
   settings: AppSettings;
 }
 

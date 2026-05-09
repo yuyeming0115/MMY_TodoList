@@ -3,7 +3,7 @@ import { ref, watch, onMounted, onUnmounted } from 'vue';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import type { ClipboardCategory } from '../types';
-import { NDropdown, NPopover, NColorPicker, useMessage, useDialog, type DropdownOption } from 'naive-ui';
+import { NDropdown, useMessage, useDialog, type DropdownOption } from 'naive-ui';
 import { h } from 'vue';
 import { NIcon } from 'naive-ui';
 import { CreateOutline as EditIcon, TrashOutline as DeleteIcon, StarOutline as StarIcon } from '@vicons/ionicons5';
@@ -22,11 +22,11 @@ const isDragging = ref(false);
 
 watch(() => store.builtinCategories, (val) => {
   builtinList.value = [...val];
-}, { immediate: true });
+}, { immediate: true, deep: true });
 
 watch(() => store.customCategories, (val) => {
   customList.value = [...val];
-}, { immediate: true });
+}, { immediate: true, deep: true });
 
 function onDragStart() {
   isDragging.value = true;
@@ -287,22 +287,35 @@ onUnmounted(() => {
       @clickoutside="contextMenuShow = false"
     />
 
-    <!-- 颜色选择弹窗 -->
-    <NPopover
-      trigger="manual"
-      :show="colorPickerShow"
-      :x="contextMenuX"
-      :y="contextMenuY + 30"
-      @clickoutside="colorPickerShow = false"
-    >
-      <NColorPicker
-        v-model:value="contextMenuCat!.color"
-        :swatches="presetColors"
-        :modes="['hex']"
-        @update:value="handleColorChange"
-        style="width: 220px"
-      />
-    </NPopover>
+    <!-- 颜色选择弹窗：使用固定定位面板 -->
+    <Teleport to="body">
+      <div
+        v-if="colorPickerShow"
+        class="color-picker-panel"
+        :style="{ left: contextMenuX + 'px', top: (contextMenuY + 30) + 'px' }"
+      >
+        <div class="color-panel-header">
+          <div class="color-preview" :style="{ background: contextMenuCat?.color || '#4A90D9' }"></div>
+          <span class="color-value">{{ contextMenuCat?.color || '#4A90D9' }}</span>
+        </div>
+        <div class="color-swatches">
+          <button
+            v-for="color in presetColors"
+            :key="color"
+            class="color-swatch"
+            :style="{ background: color }"
+            :class="{ active: contextMenuCat?.color === color }"
+            @click="handleColorChange(color)"
+          ></button>
+        </div>
+        <div class="color-actions">
+          <button class="color-cancel-btn" @click="colorPickerShow = false">取消</button>
+          <button class="color-confirm-btn" @click="colorPickerShow = false">确定</button>
+        </div>
+      </div>
+      <!-- 点击遮罩关闭 -->
+      <div v-if="colorPickerShow" class="color-picker-overlay" @click="colorPickerShow = false"></div>
+    </Teleport>
   </div>
 </template>
 
@@ -419,5 +432,149 @@ html.dark .tab-edit-input {
 
 .draggable-tabs.is-dragging .tab-btn:hover {
   background: transparent;
+}
+</style>
+
+<!-- 全局样式：颜色选择器面板，使用 html.dark 适配主题 -->
+<style>
+/* 颜色选择器面板 */
+.color-picker-panel {
+  position: fixed;
+  z-index: 10001;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 200px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e0e0e0;
+}
+
+html.dark .color-picker-panel {
+  background: #2a2a2a;
+  border-color: #444;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.color-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 12px;
+}
+
+html.dark .color-panel-header {
+  border-bottom-color: #444;
+}
+
+.color-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 2px solid #ccc;
+}
+
+html.dark .color-preview {
+  border-color: #666;
+}
+
+.color-value {
+  font-size: 16px;
+  color: #333;
+  font-weight: 500;
+}
+
+html.dark .color-value {
+  color: #e0e0e0;
+}
+
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.color-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.color-swatch:hover {
+  transform: scale(1.15);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+html.dark .color-swatch:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.color-swatch.active {
+  border-color: #333;
+  transform: scale(1.1);
+}
+
+html.dark .color-swatch.active {
+  border-color: #fff;
+}
+
+.color-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e0e0e0;
+}
+
+html.dark .color-actions {
+  border-top-color: #444;
+}
+
+.color-cancel-btn,
+.color-confirm-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s ease;
+}
+
+.color-cancel-btn {
+  background: #f0f0f0;
+  color: #666;
+}
+
+html.dark .color-cancel-btn {
+  background: #444;
+  color: #ccc;
+}
+
+.color-cancel-btn:hover {
+  background: #e0e0e0;
+}
+
+html.dark .color-cancel-btn:hover {
+  background: #555;
+}
+
+.color-confirm-btn {
+  background: #4A90D9;
+  color: #fff;
+}
+
+.color-confirm-btn:hover {
+  background: #5a9de9;
+}
+
+.color-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
 }
 </style>

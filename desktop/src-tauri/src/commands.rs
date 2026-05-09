@@ -115,14 +115,18 @@ pub fn update_settings(db: State<'_, Arc<Database>>, settings: AppSettings) -> R
 pub fn export_data(db: State<'_, Arc<Database>>) -> Result<ExportData, String> {
     let categories = db.get_categories().map_err(|e| e.to_string())?;
     let tasks = db.get_tasks().map_err(|e| e.to_string())?;
+    let clipboard_categories = db.get_clipboard_categories().map_err(|e| e.to_string())?;
+    let clipboard_items = db.get_clipboard_items().map_err(|e| e.to_string())?;
     let settings = db.get_settings().map_err(|e| e.to_string())?;
 
     Ok(ExportData {
-        version: "2.0".to_string(),
+        version: "3.0".to_string(),
         exported_at: Utc::now().to_rfc3339(),
         source: "desktop".to_string(),
         categories,
         tasks,
+        clipboard_categories,
+        clipboard_items,
         settings,
     })
 }
@@ -134,6 +138,8 @@ pub fn import_data(db: State<'_, Arc<Database>>, data: ExportData) -> Result<(),
         let conn = db.conn.lock().unwrap();
         conn.execute("DELETE FROM categories", []).map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM tasks", []).map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM clipboard_categories", []).map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM clipboard_items", []).map_err(|e| e.to_string())?;
     }
 
     // 导入分类
@@ -145,6 +151,17 @@ pub fn import_data(db: State<'_, Arc<Database>>, data: ExportData) -> Result<(),
     // 导入任务
     for task in &data.tasks {
         db.add_task(task).map_err(|e| e.to_string())?;
+    }
+
+    // 导入剪贴板分类
+    for category in &data.clipboard_categories {
+        db.add_clipboard_category(category.name.clone(), category.color.clone())
+            .map_err(|e| e.to_string())?;
+    }
+
+    // 导入剪贴板项目
+    for item in &data.clipboard_items {
+        db.add_clipboard_item(item).map_err(|e| e.to_string())?;
     }
 
     // 导入设置
@@ -328,4 +345,83 @@ pub fn get_image_for_drag(db: State<'_, Arc<Database>>, id: String) -> Result<St
     }
 
     Ok("图片已复制到剪贴板，请在目标窗口 Ctrl+V 粘贴".to_string())
+}
+
+/// 在文件管理器中打开并选中指定文件
+#[tauri::command]
+pub fn reveal_file_in_folder(path: String) -> Result<(), String> {
+    let path = std::path::PathBuf::from(&path);
+    if !path.exists() {
+        return Err("文件不存在".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: 使用 explorer /select,path
+        let path_str = path.to_string_lossy().to_string();
+        std::process::Command::new("explorer")
+            .args(["/select,", &path_str])
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Mac: 使用 open -R path
+        let path_str = path.to_string_lossy().to_string();
+        std::process::Command::new("open")
+            .args(["-R", &path_str])
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        // Linux: 打开包含文件夹
+        let parent = path.parent().unwrap_or(&path);
+        let parent_str = parent.to_string_lossy().to_string();
+        std::process::Command::new("xdg-open")
+            .arg(&parent_str)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// 清理图片文件已失效的剪贴板项目
+#[tauri::command]
+pub fn cleanup_invalid_image_items(db: State<'_, Arc<Database>>) -> Result<i64, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    // 查找所有有 imagePath 的项目
+    let mut stmt = conn.prepare(
+        "SELECT id, image_path FROM clipboard_items WHERE image_path IS NOT NULL"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let path: String = row.get(1)?;
+        Ok((id, path))
+    }).map_err(|e| e.to_string())?;
+
+    let invalid_ids: Vec<String> = rows
+        .filter_map(|r| r.ok())
+        .filter(|(_, path)| !std::path::Path::new(path).exists())
+        .map(|(id, _)| id)
+        .collect();
+
+    if invalid_ids.is_empty() {
+        return Ok(0);
+    }
+
+    // 删除失效项目
+    let mut deleted = 0i64;
+    for id in &invalid_ids {
+        conn.execute("DELETE FROM clipboard_items WHERE id = ?1", [&id])
+            .map_err(|e| e.to_string())?;
+        deleted += 1;
+    }
+
+    Ok(deleted)
 }

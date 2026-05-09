@@ -110,6 +110,8 @@ pub fn run() {
             commands::cleanup_expired_items,
             // 跨应用拖拽
             commands::get_image_for_drag,
+            commands::reveal_file_in_folder,
+            commands::cleanup_invalid_image_items,
             // 系统托盘
             hide_to_tray,
             // 工具命令

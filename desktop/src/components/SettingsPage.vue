@@ -10,6 +10,8 @@ import {
 import { useSettingsStore } from '../stores/settingsStore';
 import { useMessage } from 'naive-ui';
 import { exportData, importData } from '../utils/db';
+import { save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
 import type { ExportData } from '../types';
 
 const emit = defineEmits<{
@@ -42,21 +44,24 @@ const fontOptions = [
 // 导出数据
 async function handleExport() {
   try {
+    const filePath = await saveDialog({
+      filters: [{ name: 'MMY Todo 备份', extensions: ['mmytodo'] }],
+      defaultPath: `mmy_todo_${new Date().toISOString().slice(0, 10)}.mmytodo`,
+    });
+
+    if (!filePath) return;
+
     const data = await exportData();
     const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+    const bytes = new TextEncoder().encode(json);
 
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mmy_todo_${Date.now()}.mmytodo`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // writeFile 需要路径字符串
+    await writeFile(filePath.toString(), bytes);
 
-    message.success('导出成功');
+    message.success(`导出成功：${filePath}`);
   } catch (e) {
     message.error('导出失败');
-    console.error(e);
+    console.error('导出失败:', e);
   }
 }
 
@@ -212,8 +217,11 @@ function goBack() {
             导入数据
           </NButton>
         </NSpace>
-        <NText depth="3" style="font-size: 12px; margin-top: 8px; display: block">
-          导出文件格式：.mmytodo（JSON）
+        <NText depth="3" style="font-size: 12px; margin-top: 8px; display: block; line-height: 1.6">
+          导出内容：任务分类、任务列表、剪贴板分类、剪贴板项目、设置
+        </NText>
+        <NText depth="3" style="font-size: 12px; display: block">
+          文件格式：.mmytodo（点击导出后选择保存路径）
         </NText>
       </div>
     </div>

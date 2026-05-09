@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import {
-  NButton, NIcon, NInput,
+  NButton, NIcon, NInput, NDropdown,
   useMessage
 } from 'naive-ui';
 import {
@@ -12,6 +12,7 @@ import {
   ListOutline as ListIcon, ClipboardOutline as ClipboardIcon,
   CopyOutline as CopyIcon, LayersOutline as StackedIcon
 } from '@vicons/ionicons5';
+import { h } from 'vue';
 import draggable from 'vuedraggable';
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
 import { availableMonitors } from '@tauri-apps/api/window';
@@ -92,6 +93,13 @@ const compactClipFilter = ref<string | null>(null);
 async function switchPanel(panel: 'tasks' | 'clipboard') {
   activePanel.value = panel;
   if (panel === 'clipboard') {
+    // 先清理失效的图片项
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('cleanup_invalid_image_items');
+    } catch (e) {
+      console.error('清理失效图片失败:', e);
+    }
     await clipboardStore.load();
   }
 }
@@ -482,6 +490,29 @@ function moveTaskToTop(task: Task) {
   taskStore.update(task);
 }
 
+// 任务列表区域右键菜单
+const taskListContextMenuShow = ref(false);
+const taskListContextMenuX = ref(0);
+const taskListContextMenuY = ref(0);
+
+function handleTaskListContextMenu(e: MouseEvent) {
+  // 只在空白区域（非任务卡片）触发右键菜单
+  const target = e.target as HTMLElement;
+  if (target.closest('.task-wrapper, .simple-card')) return;
+
+  e.preventDefault();
+  taskListContextMenuX.value = e.clientX;
+  taskListContextMenuY.value = e.clientY;
+  taskListContextMenuShow.value = true;
+}
+
+function handleTaskListMenuSelect(key: string) {
+  taskListContextMenuShow.value = false;
+  if (key === 'addTask') {
+    openAddTask();
+  }
+}
+
 // 打开设置
 function openSettingsPage() {
   currentPage.value = 'settings';
@@ -671,7 +702,7 @@ async function hideToTray() {
             <div class="main-content">
               <!-- 任务面板 -->
               <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isPinned }">
-                <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned }">
+                <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned }" @contextmenu="handleTaskListContextMenu">
                   <div v-if="filteredTasks.length === 0" class="empty">
                     暂无任务
                   </div>
@@ -721,6 +752,20 @@ async function hideToTray() {
                   :task="editingTask"
                   @close="showTaskForm = false"
                   @saved="onTaskSaved"
+                />
+
+                <!-- 任务列表右键菜单 -->
+                <NDropdown
+                  placement="bottom-start"
+                  trigger="manual"
+                  :x="taskListContextMenuX"
+                  :y="taskListContextMenuY"
+                  :show="taskListContextMenuShow"
+                  :options="[
+                    { label: '添加任务', key: 'addTask', icon: () => h(NIcon, { component: AddIcon, size: 16 }) }
+                  ]"
+                  @select="handleTaskListMenuSelect"
+                  @clickoutside="taskListContextMenuShow = false"
                 />
               </div>
 

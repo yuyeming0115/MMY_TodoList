@@ -151,5 +151,7 @@ pub struct ExportData {
     pub source: String,
     pub categories: Vec<Category>,
     pub tasks: Vec<Task>,
+    pub clipboard_categories: Vec<ClipboardCategory>,
+    pub clipboard_items: Vec<ClipboardItem>,
     pub settings: AppSettings,
 }
