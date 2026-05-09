@@ -281,18 +281,18 @@ async function handleCrossAppDragStart(e: DragEvent) {
   isCrossDragging.value = true;
   e.dataTransfer.effectAllowed = 'copy';
 
-  if (props.item.imagePath || props.item.imageBase64) {
-    // 图片：写入系统剪贴板，用户到目标窗口 Ctrl+V
+  if (props.item.imagePath) {
+    // 有本地文件路径：用文件 URI 实现真正拖拽到外部应用
+    const filePath = props.item.imagePath.replace(/\\/g, '/');
+    e.dataTransfer.setData('text/uri-list', `file:///${filePath}`);
+    e.dataTransfer.setData('text/plain', props.item.imagePath);
+  } else if (props.item.imageBase64) {
+    // 无本地路径（仅 base64）：保持剪贴板方案
     const { invoke } = await import('@tauri-apps/api/core');
     try {
-      if (props.item.imagePath) {
-        const tip = await invoke<string>('get_image_for_drag', { id: props.item.id });
-        message.info(tip);
-      } else if (props.item.imageBase64) {
-        const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
-        await invoke('write_image_to_clipboard', { base64: base64Data });
-        message.info('图片已复制到剪贴板，请在目标窗口 Ctrl+V 粘贴');
-      }
+      const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      await invoke('write_image_to_clipboard', { base64: base64Data });
+      message.info('图片已复制到剪贴板，请在目标窗口 Ctrl+V 粘贴');
     } catch {
       message.error('图片复制失败');
     }
