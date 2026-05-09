@@ -187,6 +187,13 @@ export const useClipboardStore = defineStore('clipboard', () => {
     if (index !== -1) items.value[index] = item;
   }
 
+  async function removeItems(ids: string[]) {
+    for (const id of ids) {
+      await deleteClipboardItem(id);
+    }
+    items.value = items.value.filter(i => !ids.includes(i.id));
+  }
+
   async function removeItem(id: string) {
     await deleteClipboardItem(id);
     items.value = items.value.filter(i => i.id !== id);
@@ -329,6 +336,7 @@ export const useClipboardStore = defineStore('clipboard', () => {
     addItem,
     updateItem,
     removeItem,
+    removeItems,
     reorderItems,
     pasteFromClipboard,
     favoriteItem,

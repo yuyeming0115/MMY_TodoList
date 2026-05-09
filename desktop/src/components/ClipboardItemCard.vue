@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { NIcon, NDropdown, NInput, useMessage } from 'naive-ui';
-import { h, ref, computed, nextTick } from 'vue';
+import { h, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import {
   TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon,
-  CreateOutline as EditIcon, TimeOutline as TimeIcon
+  CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
+  ReorderTwoOutline as DragIcon,
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
@@ -13,12 +14,18 @@ const props = defineProps<{
   item: ClipboardItem;
   compact?: boolean;
   stacked?: boolean;
+  showCheckbox?: boolean;
+  selected?: boolean;
+  selectionAnchor?: string | null;
 }>();
 
 const emit = defineEmits<{
   (e: 'delete', id: string): void;
   (e: 'update-priority', item: ClipboardItem, priority: 1 | 2 | 3): void;
   (e: 'contextmenu', event: MouseEvent, item: ClipboardItem): void;
+  (e: 'toggle-select', id: string, shift: boolean): void;
+  (e: 'enter-select-mode'): void;
+  (e: 'move-to-category', item: ClipboardItem, categoryId: string): void;
 }>();
 
 const message = useMessage();
@@ -26,6 +33,21 @@ const clipboardStore = useClipboardStore();
 const showContextMenu = ref(false);
 const contextMenuX = ref(0);
 const contextMenuY = ref(0);
+const isCrossDragging = ref(false);
+const dragHandleRef = ref<HTMLElement | null>(null);
+
+// 用原生 mousedown 拦截 Sortable.js 的事件捕获，让它无法调用 preventDefault() 阻断原生拖拽
+function blockSortableMousedown(e: Event) {
+  e.stopImmediatePropagation();
+}
+
+onMounted(() => {
+  dragHandleRef.value?.addEventListener('mousedown', blockSortableMousedown, true);
+});
+
+onUnmounted(() => {
+  dragHandleRef.value?.removeEventListener('mousedown', blockSortableMousedown, true);
+});
 
 const isFavorite = computed(() => props.item.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
 const isTextItem = computed(() => !props.item.imageBase64 && !props.item.imagePath);
@@ -68,6 +90,21 @@ const editTitle = ref('');
 const editContent = ref('');
 const editTextareaRef = ref<any>(null);
 
+const categoryOptions = computed(() => {
+  const allCats = clipboardStore.categories;
+  return allCats
+    .filter(cat => cat.id !== props.item.categoryId)
+    .map(cat => ({
+      label: cat.name,
+      key: `move_${cat.id}`,
+      icon: () => h(NIcon, {
+        component: FolderIcon,
+        size: 16,
+        style: { color: cat.color },
+      }),
+    }));
+});
+
 const contextMenuOptions = computed(() => {
   const options: any[] = [
     { label: '复制', key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
@@ -95,7 +132,19 @@ const contextMenuOptions = computed(() => {
     });
   }
 
+  // 移动到分类（有自定义分类时显示）
+  if (categoryOptions.value.length > 0) {
+    options.push({ type: 'divider', key: 'd2' });
+    options.push({
+      key: 'move',
+      label: '移动到分类',
+      icon: () => h(NIcon, { component: FolderIcon, size: 16 }),
+      children: categoryOptions.value,
+    });
+  }
+
   options.push({ type: 'divider', key: 'd1' });
+  options.push({ label: '进入选择模式', key: 'enter_select', icon: () => h(NIcon, { component: SelectIcon, size: 16 }) });
   options.push({ label: '删除', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
   return options;
 });
@@ -149,7 +198,11 @@ async function handleFavorite() {
   }
 }
 
-function handleClick() {
+function handleClick(e: MouseEvent) {
+  if (props.showCheckbox || e.ctrlKey || e.metaKey || e.shiftKey) {
+    emit('toggle-select', props.item.id, e.shiftKey);
+    return;
+  }
   copyContent();
 }
 
@@ -181,6 +234,12 @@ function handleMenuSelect(key: string) {
   if (key === 'favorite') handleFavorite();
   if (key === 'edit') startEdit();
   if (key === 'delete') emit('delete', props.item.id);
+  if (key === 'enter_select') emit('enter-select-mode');
+  if (key.startsWith('move_')) {
+    const catId = key.slice(5);
+    emit('move-to-category', props.item, catId);
+    message.success('已移动');
+  }
   if (key.startsWith('expiry_')) setExpiry(key);
 }
 
@@ -213,6 +272,39 @@ function cancelEdit() {
   editTitle.value = '';
   editContent.value = '';
 }
+
+// 跨应用拖拽处理
+async function handleCrossAppDragStart(e: DragEvent) {
+  if (!e.dataTransfer) return;
+
+  e.stopPropagation();
+  isCrossDragging.value = true;
+  e.dataTransfer.effectAllowed = 'copy';
+
+  if (props.item.imagePath || props.item.imageBase64) {
+    // 图片：写入系统剪贴板，用户到目标窗口 Ctrl+V
+    const { invoke } = await import('@tauri-apps/api/core');
+    try {
+      if (props.item.imagePath) {
+        const tip = await invoke<string>('get_image_for_drag', { id: props.item.id });
+        message.info(tip);
+      } else if (props.item.imageBase64) {
+        const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+        await invoke('write_image_to_clipboard', { base64: base64Data });
+        message.info('图片已复制到剪贴板，请在目标窗口 Ctrl+V 粘贴');
+      }
+    } catch {
+      message.error('图片复制失败');
+    }
+  } else {
+    // 文本
+    e.dataTransfer.setData('text/plain', props.item.content);
+  }
+}
+
+function handleCrossAppDragEnd(_e: DragEvent) {
+  isCrossDragging.value = false;
+}
 </script>
 
 <template>
@@ -226,7 +318,22 @@ function cancelEdit() {
     @select="handleMenuSelect"
     @clickoutside="showContextMenu = false"
   />
-  <div class="task-card" :class="{ compact: props.compact, expiring: isExpiringSoon, stacked: props.stacked }" @click="handleClick" @contextmenu="handleContextMenu">
+  <div class="task-card" :class="{ compact: props.compact, expiring: isExpiringSoon, stacked: props.stacked, selected: props.selected }" @click="handleClick" @contextmenu="handleContextMenu">
+    <label v-if="props.showCheckbox" class="checkbox-overlay" @click.stop="emit('toggle-select', props.item.id, false)">
+      <input type="checkbox" :checked="props.selected" />
+      <span class="checkmark"></span>
+    </label>
+    <div
+      class="cross-app-drag-handle"
+      draggable="true"
+      ref="dragHandleRef"
+      @dragstart="handleCrossAppDragStart"
+      @dragend="handleCrossAppDragEnd"
+      :class="{ 'is-dragging': isCrossDragging }"
+      title="拖拽到其它应用"
+    >
+      <NIcon :component="DragIcon" size="18" />
+    </div>
     <div class="task-content">
       <!-- 纯图片：显示缩略图（优先用 thumbnailBase64，回退到 imageBase64） -->
       <div v-if="item.imagePath || item.imageBase64" class="image-only">
@@ -527,5 +634,108 @@ html.dark .expiry-badge.warning {
 
 .task-card {
   position: relative;
+}
+
+/* 复选框覆盖层 */
+.checkbox-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.checkbox-overlay input[type="checkbox"] {
+  display: none;
+}
+
+.checkmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #ccc;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  transition: all 0.15s;
+  pointer-events: none;
+}
+
+html.dark .checkmark {
+  background: rgba(42, 42, 42, 0.9);
+  border-color: #555;
+}
+
+.checkmark::after {
+  content: '';
+  width: 6px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.15s;
+}
+
+.checkbox-overlay input:checked + .checkmark {
+  background: #4A90D9;
+  border-color: #4A90D9;
+}
+
+.checkbox-overlay input:checked + .checkmark::after {
+  transform: rotate(45deg) scale(1);
+}
+
+/* 选中状态卡片 */
+.task-card.selected {
+  border-left-color: #4A90D9;
+  background: rgba(74, 144, 217, 0.06);
+}
+
+html.dark .task-card.selected {
+  background: rgba(74, 144, 217, 0.1);
+}
+
+/* 跨应用拖拽手柄 */
+.cross-app-drag-handle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 5;
+  color: #999;
+}
+
+.task-card:hover .cross-app-drag-handle {
+  opacity: 1;
+}
+
+.cross-app-drag-handle:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+html.dark .cross-app-drag-handle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cross-app-drag-handle:active {
+  cursor: grabbing;
+}
+
+.cross-app-drag-handle.is-dragging {
+  opacity: 1;
+  background: rgba(74, 144, 217, 0.2);
+  color: #4A90D9;
 }
 </style>

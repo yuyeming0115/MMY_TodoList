@@ -262,7 +262,6 @@ pub fn cleanup_expired_items(db: State<'_, Arc<Database>>) -> Result<i64, String
         .unwrap()
         .as_millis() as i64;
 
-    // 获取需要删除的项目的图片 path
     let mut stmt = conn.prepare(
         "SELECT image_path FROM clipboard_items WHERE expires_at IS NOT NULL AND expires_at <= ?1"
     ).map_err(|e| e.to_string())?;
@@ -274,7 +273,6 @@ pub fn cleanup_expired_items(db: State<'_, Arc<Database>>) -> Result<i64, String
         [&now.to_string()],
     ).map_err(|e| e.to_string())?;
 
-    // 删除对应的图片文件
     for path_opt in paths {
         if let Some(path) = path_opt {
             let p = std::path::PathBuf::from(&path);
@@ -285,4 +283,49 @@ pub fn cleanup_expired_items(db: State<'_, Arc<Database>>) -> Result<i64, String
     }
 
     Ok(deleted as i64)
+}
+
+/// 准备图片用于跨应用拖拽：复制到剪贴板并返回提示
+#[tauri::command]
+pub fn get_image_for_drag(db: State<'_, Arc<Database>>, id: String) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let image_path: Option<String> = conn
+        .query_row(
+            "SELECT image_path FROM clipboard_items WHERE id = ?1",
+            [&id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let image_path = image_path.ok_or("图片路径不存在")?;
+    let bytes = std::fs::read(&image_path)
+        .map_err(|e| format!("读取图片失败: {}", e))?;
+
+    // 直接写入系统剪贴板（复用 write_image_to_clipboard 的逻辑）
+    #[cfg(target_os = "windows")]
+    {
+        use clipboard_win::{Clipboard, formats, raw};
+        use image::codecs::bmp::BmpEncoder;
+
+        let img = image::load_from_memory(&bytes).map_err(|e| format!("图片解码失败: {}", e))?;
+        let rgba = img.into_rgba8();
+        let (w, h) = rgba.dimensions();
+
+        let mut bmp_buf = Vec::new();
+        let mut encoder = BmpEncoder::new(&mut bmp_buf);
+        encoder.encode(&rgba, w, h, image::ExtendedColorType::Rgba8)
+            .map_err(|e| format!("BMP 编码失败: {}", e))?;
+
+        let dib_data = &bmp_buf[14..];
+
+        let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
+        raw::set(formats::CF_DIB, dib_data).map_err(|e| format!("写入剪贴板失败: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = bytes;
+    }
+
+    Ok("图片已复制到剪贴板，请在目标窗口 Ctrl+V 粘贴".to_string())
 }

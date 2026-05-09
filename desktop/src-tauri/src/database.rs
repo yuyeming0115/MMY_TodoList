@@ -671,8 +671,8 @@ impl Database {
             .unwrap()
             .as_millis() as i64;
 
-        let title = if content.len() > 30 {
-            format!("{}...", &content[..30])
+        let title = if content.chars().count() > 30 {
+            format!("{}...", content.chars().take(30).collect::<String>())
         } else {
             content.to_string()
         };
@@ -711,7 +711,11 @@ impl Database {
         // 7 天过期
         let expires_at = now + (7 * 24 * 60 * 60 * 1000);
 
-        let (image_path, thumbnail_base64) = self.save_clipboard_image(&id, image_base64)?;
+        let (image_path, thumbnail_base64) = self.save_clipboard_image(&id, image_base64)
+            .map_err(|e| {
+                eprintln!("[剪贴板] 保存图片失败: {:?}", e);
+                e
+            })?;
 
         // 使用内置"图像"分类 ID
         let category_id = "builtin_image";
@@ -729,8 +733,12 @@ impl Database {
             "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 2, ?8, ?9, ?10)",
             rusqlite::params![&id, category_id, "剪贴板图片", "", "", image_path, thumbnail_base64, min_order - 1, &now, expires_at],
-        )?;
+        ).map_err(|e| {
+            eprintln!("[剪贴板] 插入数据库失败: {:?}", e);
+            e
+        })?;
         if affected == 0 {
+            eprintln!("[剪贴板] INSERT OR IGNORE 未插入任何行（可能主键冲突）");
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
         Ok(())
@@ -746,7 +754,10 @@ impl Database {
         };
 
         let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e))))?;
+            .map_err(|e| {
+                eprintln!("[剪贴板] base64 解码失败: {:?}", e);
+                rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+            })?;
 
         // 获取应用数据目录
         let app_dir = std::env::current_exe()
@@ -754,17 +765,27 @@ impl Database {
             .and_then(|p| p.parent().map(|p| p.to_path_buf()))
             .unwrap_or_else(|| std::path::PathBuf::from("."));
         let img_dir = app_dir.join("clipboard_images");
-        std::fs::create_dir_all(&img_dir).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        std::fs::create_dir_all(&img_dir).map_err(|e| {
+            eprintln!("[剪贴板] 创建图片目录失败: {:?}, 路径: {:?}", e, img_dir);
+            rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+        })?;
 
         let file_path = img_dir.join(format!("{}.png", id));
         let file_path_str = file_path.to_str().unwrap_or("").to_string();
 
         // 保存原图
         std::fs::write(&file_path, &decoded)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            .map_err(|e| {
+                eprintln!("[剪贴板] 写入图片文件失败: {:?}, 路径: {:?}", e, file_path);
+                rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+            })?;
 
         // 生成缩略图（最大宽度 300px）
-        let thumbnail_base64 = self.generate_thumbnail(&decoded)?;
+        let thumbnail_base64 = self.generate_thumbnail(&decoded)
+            .map_err(|e| {
+                eprintln!("[剪贴板] 生成缩略图失败: {:?}", e);
+                e
+            })?;
 
         Ok((file_path_str, thumbnail_base64))
     }
@@ -772,13 +793,14 @@ impl Database {
     /// 生成缩略图 base64（最大宽度 300px）
     fn generate_thumbnail(&self, image_data: &[u8]) -> SqliteResult<String> {
         use base64::Engine;
-        use image::ImageReader;
+        use image::{ImageFormat, ImageReader};
 
-        let img = ImageReader::new(std::io::Cursor::new(image_data))
-            .with_guessed_format()
-            .ok()
-            .and_then(|r| r.decode().ok())
-            .ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "无法解码图片"))))?;
+        let img = ImageReader::with_format(std::io::Cursor::new(image_data), ImageFormat::Png)
+            .decode()
+            .map_err(|e| {
+                eprintln!("[剪贴板] 缩略图解码失败: {:?}", e);
+                rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+            })?;
 
         let (width, height) = img.dimensions();
         let max_width: u32 = 300;

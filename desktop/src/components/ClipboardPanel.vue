@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, h } from 'vue';
-import { NDropdown, NIcon, NInput, useMessage } from 'naive-ui';
-import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, TimeOutline as TimeIcon } from '@vicons/ionicons5';
+import { NDropdown, NIcon, NInput, NPopconfirm, useMessage } from 'naive-ui';
+import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import ClipboardItemCard from './ClipboardItemCard.vue';
@@ -19,6 +19,76 @@ const props = defineProps<{
 
 const isDragging = ref(false);
 const dragList = ref<ClipboardItem[]>([]);
+
+// 批量选择
+const selectMode = ref(false);
+const selectedIds = ref(new Set<string>());
+const selectionAnchor = ref<string | null>(null); // Shift 连选的锚点
+
+// 切换选择模式
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value;
+  if (!selectMode.value) {
+    selectedIds.value = new Set();
+    selectionAnchor.value = null;
+  }
+  listMenuShow.value = false;
+}
+
+// 切换单个选中
+function toggleSelect(id: string, isShift: boolean) {
+  if (isShift && selectionAnchor.value) {
+    // Shift 连选：选中锚点到当前之间的所有项目
+    const ids = filteredItems.value.map(i => i.id);
+    const anchorIdx = ids.indexOf(selectionAnchor.value);
+    const currIdx = ids.indexOf(id);
+    if (anchorIdx >= 0 && currIdx >= 0) {
+      const start = Math.min(anchorIdx, currIdx);
+      const end = Math.max(anchorIdx, currIdx);
+      for (let i = start; i <= end; i++) {
+        selectedIds.value.add(ids[i]);
+      }
+    }
+  } else {
+    if (selectedIds.value.has(id)) {
+      selectedIds.value.delete(id);
+    } else {
+      selectedIds.value.add(id);
+      selectionAnchor.value = id;
+    }
+  }
+}
+
+// 进入选择模式（从卡片菜单触发）
+function enterSelectModeFromCard() {
+  if (!selectMode.value) {
+    selectMode.value = true;
+  }
+}
+
+// 移动分类
+function moveToCategory(item: ClipboardItem, categoryId: string) {
+  item.categoryId = categoryId;
+  clipboardStore.updateItem(item);
+}
+
+// 全选 / 取消全选
+function selectAll() {
+  selectedIds.value = new Set(filteredItems.value.map(i => i.id));
+  if (!selectMode.value) selectMode.value = true;
+}
+
+// 批量删除
+async function deleteSelected() {
+  const ids = [...selectedIds.value];
+  if (ids.length === 0) return;
+  await clipboardStore.removeItems(ids);
+  message.success(`已删除 ${ids.length} 项`);
+  selectedIds.value = new Set();
+  if (ids.length === filteredItems.value.length) {
+    selectMode.value = false;
+  }
+}
 
 // 过滤后的项目（精简模式下使用 props.categoryFilter，否则用 store 的过滤）
 const filteredItems = computed(() => {
@@ -177,6 +247,28 @@ function cancelEdit() {
 
 <template>
   <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" @contextmenu="handleListContextMenu">
+    <!-- 选择工具栏 -->
+    <div v-if="selectMode || selectedIds.size > 0" class="selection-toolbar">
+      <span class="selection-count">已选 {{ selectedIds.size }} / {{ filteredItems.length }}</span>
+      <button class="toolbar-btn" @click="selectAll" :disabled="selectedIds.size === filteredItems.length" title="全选">
+        <NIcon :component="CheckAllIcon" size="16" />
+        全选
+      </button>
+      <NPopconfirm @positive-click="deleteSelected">
+        <template #trigger>
+          <button class="toolbar-btn danger" :disabled="selectedIds.size === 0" title="删除选中">
+            <NIcon :component="DeleteIcon" size="16" />
+            删除选中
+          </button>
+        </template>
+        确定删除选中的 {{ selectedIds.size }} 项吗？
+      </NPopconfirm>
+      <button class="toolbar-btn" @click="toggleSelectMode" title="退出选择模式">
+        <NIcon :component="CloseIcon" size="14" />
+        退出
+      </button>
+    </div>
+
     <div v-if="filteredItems.length === 0" class="empty">
       暂无剪贴板记录
       <button class="cleanup-btn" @click="cleanupExpired">清理已过期项目</button>
@@ -191,6 +283,8 @@ function cancelEdit() {
       :animation="200"
       :force-fallback="true"
       :fallback-tolerance="3"
+      filter=".cross-app-drag-handle"
+      :prevent-on-filter="false"
       class="drag-container"
       @start="onDragStart"
       @end="onDragEnd"
@@ -201,9 +295,15 @@ function cancelEdit() {
             :item="element"
             :compact="props.compact"
             :stacked="props.stacked"
+            :show-checkbox="selectMode || selectedIds.size > 0"
+            :selected="selectedIds.has(element.id)"
+            :selection-anchor="selectionAnchor"
             @delete="deleteItem"
             @update-priority="updatePriority"
             @contextmenu="handleItemContextMenu($event, element)"
+            @toggle-select="toggleSelect"
+            @enter-select-mode="enterSelectModeFromCard"
+            @move-to-category="moveToCategory"
           />
         </div>
       </template>
@@ -268,6 +368,90 @@ function cancelEdit() {
 </template>
 
 <style scoped>
+.selection-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: #f0f5ff;
+  border: 1px solid #d0e0f5;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+html.dark .selection-toolbar {
+  background: #1e2a3a;
+  border-color: #2a3a4a;
+}
+
+.selection-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4A90D9;
+  margin-right: auto;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: #4A90D9;
+  border-color: #4A90D9;
+  color: #fff;
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolbar-btn.danger {
+  color: #E05252;
+  border-color: #E05252;
+}
+
+.toolbar-btn.danger:hover:not(:disabled) {
+  background: #E05252;
+  color: #fff;
+}
+
+html.dark .toolbar-btn {
+  background: #2a2a2a;
+  border-color: #444;
+  color: #ccc;
+}
+
+html.dark .toolbar-btn:hover:not(:disabled) {
+  background: #4A90D9;
+  border-color: #4A90D9;
+  color: #fff;
+}
+
+html.dark .toolbar-btn.danger {
+  color: #E05252;
+  border-color: #E05252;
+}
+
+html.dark .toolbar-btn.danger:hover:not(:disabled) {
+  background: #E05252;
+  color: #fff;
+}
+
 .clipboard-list {
   flex: 1;
   min-height: 0;
