@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, h } from 'vue';
 import { NDropdown, NIcon, NInput, NPopconfirm, useMessage } from 'naive-ui';
-import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon } from '@vicons/ionicons5';
+import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import { useI18n } from '../composables/useI18n';
@@ -44,7 +44,6 @@ function toggleSelectMode() {
     selectedIds.value = new Set();
     selectionAnchor.value = null;
   }
-  listMenuShow.value = false;
 }
 
 // 切换单个选中
@@ -175,35 +174,6 @@ const isEditing = ref(false);
 const editTitle = ref('');
 const editContent = ref('');
 
-// 清理已过期项目
-async function cleanupExpired() {
-  const count = await clipboardStore.cleanupExpiredItems();
-  if (count > 0) {
-    message.success(t('messages.cleanupDone', { count }));
-  } else {
-    message.info(t('messages.noExpiredItems'));
-  }
-}
-
-// 列表右键菜单
-const listMenuShow = ref(false);
-const listMenuX = ref(0);
-const listMenuY = ref(0);
-
-function handleListContextMenu(e: MouseEvent) {
-  e.preventDefault();
-  listMenuX.value = e.clientX;
-  listMenuY.value = e.clientY;
-  listMenuShow.value = true;
-}
-
-async function handleListMenuSelect(key: string) {
-  listMenuShow.value = false;
-  if (key === 'cleanup') {
-    await cleanupExpired();
-  }
-}
-
 async function handleContextMenuSelect(key: string) {
   contextMenuShow.value = false;
   if (!contextMenuItem.value) return;
@@ -258,7 +228,7 @@ function cancelEdit() {
 </script>
 
 <template>
-  <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" :style="stackStyle" @contextmenu="handleListContextMenu">
+  <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" :style="stackStyle">
     <!-- 选择工具栏 -->
     <div v-if="selectMode || selectedIds.size > 0" class="selection-toolbar">
       <span class="selection-count">{{ t('messages.selected', { count: selectedIds.size, total: filteredItems.length }) }}</span>
@@ -283,7 +253,6 @@ function cancelEdit() {
 
     <div v-if="filteredItems.length === 0" class="empty">
       {{ t('empty.noClipboard') }}
-      <button class="cleanup-btn" @click="cleanupExpired">{{ t('contextMenu.cleanupExpired') }}</button>
     </div>
     <draggable
       v-else
@@ -364,21 +333,6 @@ function cancelEdit() {
         </div>
       </template>
     </NDropdown>
-
-    <!-- 列表右键菜单 -->
-    <NDropdown
-      placement="bottom-start"
-      trigger="manual"
-      :x="listMenuX"
-      :y="listMenuY"
-      :show="listMenuShow"
-      :options="[
-        { label: t('contextMenu.cleanupExpired'), key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 14 }) }
-      ]"
-      @select="handleListMenuSelect"
-      @clickoutside="listMenuShow = false"
-      style="z-index: 3100"
-    />
   </div>
 </template>
 
@@ -517,34 +471,6 @@ html.dark .clipboard-list:hover::-webkit-scrollbar-thumb {
   text-align: center;
   padding: 40px;
   color: #888;
-}
-
-.cleanup-btn {
-  display: block;
-  margin: 12px auto 0;
-  padding: 4px 16px;
-  background: transparent;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #999;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.cleanup-btn:hover {
-  border-color: #E05252;
-  color: #E05252;
-}
-
-html.dark .cleanup-btn {
-  border-color: #444;
-  color: #777;
-}
-
-html.dark .cleanup-btn:hover {
-  border-color: #E05252;
-  color: #E05252;
 }
 
 /* 拖拽动画 */

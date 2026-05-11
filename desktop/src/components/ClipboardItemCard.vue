@@ -160,6 +160,8 @@ const contextMenuOptions = computed(() => {
   options.push({ type: 'divider', key: 'd1' });
   options.push({ label: t('contextMenu.enterSelectMode'), key: 'enter_select', icon: () => h(NIcon, { component: SelectIcon, size: 16 }) });
   options.push({ label: t('contextMenu.delete'), key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
+  options.push({ type: 'divider', key: 'd2' });
+  options.push({ label: t('contextMenu.cleanupExpired'), key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 16, style: { color: '#E05252' } }) });
   return options;
 });
 
@@ -252,8 +254,17 @@ function setExpiry(key: string) {
   message.success(t('messages.expirySet', { label: t(labelKey) }));
 }
 
-function handleMenuSelect(key: string) {
+async function handleMenuSelect(key: string) {
   showContextMenu.value = false;
+  if (key === 'cleanup') {
+    const count = await clipboardStore.cleanupExpiredItems();
+    if (count > 0) {
+      message.success(t('messages.cleanupDone', { count }));
+    } else {
+      message.info(t('messages.noExpiredItems'));
+    }
+    return;
+  }
   if (key === 'copy') copyContent();
   if (key === 'favorite') handleFavorite();
   if (key === 'edit') startEdit();
