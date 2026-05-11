@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem } from '../types';
+import type { Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem, BackupSettings, BackupInfo } from '../types';
 
 // 分类操作
 export async function getCategories(): Promise<Category[]> {
@@ -121,4 +121,29 @@ export async function setClipboardItemExpiry(id: string, expiresAt: number | nul
 
 export async function cleanupExpiredItems(): Promise<number> {
   return invoke('cleanup_expired_items');
+}
+
+// 备份操作
+export async function getBackupSettings(): Promise<BackupSettings> {
+  return invoke('get_backup_settings');
+}
+
+export async function updateBackupSettings(settings: BackupSettings): Promise<void> {
+  return invoke('update_backup_settings', { settings });
+}
+
+export async function createBackupNow(): Promise<string> {
+  return invoke('create_backup_now');
+}
+
+export async function listBackups(): Promise<BackupInfo[]> {
+  return invoke('list_backups');
+}
+
+export async function restoreBackup(filename: string): Promise<void> {
+  return invoke('restore_backup', { filename });
+}
+
+export async function deleteBackup(filename: string): Promise<void> {
+  return invoke('delete_backup', { filename });
 }

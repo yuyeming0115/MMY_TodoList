@@ -1,5 +1,6 @@
 use crate::database::Database;
 use crate::models::{Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem};
+use crate::backup::{BackupManager, BackupSettings, BackupInfo};
 use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -424,4 +425,35 @@ pub fn cleanup_invalid_image_items(db: State<'_, Arc<Database>>) -> Result<i64, 
     }
 
     Ok(deleted)
+}
+
+// 备份命令
+#[tauri::command]
+pub fn get_backup_settings(backup_mgr: State<'_, Arc<BackupManager>>) -> Result<BackupSettings, String> {
+    Ok(backup_mgr.get_settings())
+}
+
+#[tauri::command]
+pub fn update_backup_settings(backup_mgr: State<'_, Arc<BackupManager>>, settings: BackupSettings) -> Result<(), String> {
+    backup_mgr.update_settings_internal(settings).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_backup_now(app: tauri::AppHandle, backup_mgr: State<'_, Arc<BackupManager>>) -> Result<String, String> {
+    backup_mgr.create_backup(&app).ok_or("创建备份失败".to_string())
+}
+
+#[tauri::command]
+pub fn list_backups(backup_mgr: State<'_, Arc<BackupManager>>) -> Result<Vec<BackupInfo>, String> {
+    Ok(backup_mgr.list_backups())
+}
+
+#[tauri::command]
+pub fn restore_backup(backup_mgr: State<'_, Arc<BackupManager>>, filename: String) -> Result<(), String> {
+    backup_mgr.restore_backup(&filename).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_backup(backup_mgr: State<'_, Arc<BackupManager>>, filename: String) -> Result<(), String> {
+    backup_mgr.delete_backup(&filename).map_err(|e| e.to_string())
 }

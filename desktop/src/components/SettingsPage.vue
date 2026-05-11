@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import {
   NForm, NFormItem, NSelect, NSwitch, NSpace,
-  NButton, NDivider, NIcon, NText, NSlider
+  NButton, NDivider, NIcon, NText, NSlider, NPopconfirm
 } from 'naive-ui';
 import {
   DownloadOutline as ExportIcon, CloudUploadOutline as ImportIcon,
-  ArrowBackOutline as BackIcon, Star as StarIcon
+  ArrowBackOutline as BackIcon, Star as StarIcon, CloudOutline as BackupIcon,
+  TrashOutline as TrashIcon, RefreshOutline as RestoreIcon, TimeOutline as TimeIcon
 } from '@vicons/ionicons5';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useMessage } from 'naive-ui';
-import { exportData, importData } from '../utils/db';
+import { exportData, importData, getBackupSettings, updateBackupSettings, createBackupNow, listBackups, restoreBackup, deleteBackup } from '../utils/db';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
-import type { ExportData } from '../types';
+import type { ExportData, BackupSettings, BackupInfo } from '../types';
+import { ref, onMounted } from 'vue';
 
 const emit = defineEmits<{
   (e: 'back'): void;
@@ -21,25 +23,102 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore();
 const message = useMessage();
 
-// 主题选项
-const themeOptions = [
-  { label: '跟随系统', value: 'system' },
-  { label: '亮色', value: 'light' },
-  { label: '暗色', value: 'dark' }
-];
-
-// 语言选项
-const languageOptions = [
-  { label: '简体中文', value: 'zh' },
-  { label: 'English', value: 'en' }
-];
-
 // 字体选项
 const fontOptions = [
   { label: '系统默认', value: '' },
   { label: '阿里妈妈东方大楷', value: 'AlimamaDongfangDakai' },
   { label: '抖音美好体', value: 'DouyinMeihaoTi' },
 ];
+
+// 备份设置
+const backupSettings = ref<BackupSettings>({
+  backupDaily: true,
+  backupOnClose: true,
+  backupHourly: false,
+  retentionDays: 7,
+});
+
+// 备份列表
+const backups = ref<BackupInfo[]>([]);
+
+// 加载备份设置和备份列表
+async function loadBackupData() {
+  try {
+    backupSettings.value = await getBackupSettings();
+    backups.value = await listBackups();
+  } catch (e) {
+    console.error('加载备份设置失败:', e);
+  }
+}
+
+onMounted(loadBackupData);
+
+// 更新备份设置
+async function updateBackup(key: keyof BackupSettings, value: boolean | number) {
+  (backupSettings.value as any)[key] = value;
+  try {
+    await updateBackupSettings(backupSettings.value);
+    message.success('设置已保存');
+  } catch (e) {
+    message.error('保存设置失败');
+    console.error(e);
+  }
+}
+
+// 立即备份
+async function handleBackupNow() {
+  try {
+    const filename = await createBackupNow();
+    message.success(`备份成功：${filename}`);
+    await loadBackupData();
+  } catch (e) {
+    message.error('备份失败');
+    console.error(e);
+  }
+}
+
+// 恢复备份
+async function handleRestore(filename: string) {
+  try {
+    await restoreBackup(filename);
+    message.success('恢复成功，正在刷新...');
+    setTimeout(() => window.location.reload(), 1000);
+  } catch (e) {
+    message.error('恢复失败');
+    console.error(e);
+  }
+}
+
+// 删除备份
+async function handleDeleteBackup(filename: string) {
+  try {
+    await deleteBackup(filename);
+    message.success('删除成功');
+    await loadBackupData();
+  } catch (e) {
+    message.error('删除失败');
+    console.error(e);
+  }
+}
+
+// 格式化备份时间
+function formatBackupTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// 格式化文件大小
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 // 导出数据
 async function handleExport() {
@@ -117,22 +196,6 @@ function goBack() {
     <!-- 页面内容 -->
     <div class="page-content">
       <NForm label-placement="left" label-width="100">
-        <NFormItem label="主题">
-          <NSelect
-            :value="settingsStore.settings.themeMode"
-            :options="themeOptions"
-            @update:value="(v: string) => settingsStore.setTheme(v as any)"
-          />
-        </NFormItem>
-
-        <NFormItem label="语言">
-          <NSelect
-            :value="settingsStore.settings.language"
-            :options="languageOptions"
-            @update:value="(v: string) => settingsStore.setLanguage(v as any)"
-          />
-        </NFormItem>
-
         <NFormItem label="隐藏已完成">
           <NSwitch
             :value="settingsStore.settings.hideCompletedTasks"
@@ -147,6 +210,91 @@ function goBack() {
           />
         </NFormItem>
       </NForm>
+
+      <NDivider />
+
+      <!-- 自动备份设置 -->
+      <div class="backup-section">
+        <NText depth="2" style="font-weight: 500">自动备份</NText>
+
+        <NForm label-placement="left" label-width="120" style="margin-top: 12px">
+          <NFormItem label="每日备份">
+            <NSwitch
+              :value="backupSettings.backupDaily"
+              @update:value="(v: boolean) => updateBackup('backupDaily', v)"
+            />
+          </NFormItem>
+
+          <NFormItem label="关闭时备份">
+            <NSwitch
+              :value="backupSettings.backupOnClose"
+              @update:value="(v: boolean) => updateBackup('backupOnClose', v)"
+            />
+          </NFormItem>
+
+          <NFormItem label="每小时备份">
+            <NSwitch
+              :value="backupSettings.backupHourly"
+              @update:value="(v: boolean) => updateBackup('backupHourly', v)"
+            />
+          </NFormItem>
+
+          <NFormItem label="保留天数">
+            <NSlider
+              :value="backupSettings.retentionDays"
+              :min="1"
+              :max="30"
+              :step="1"
+              @update:value="(v: number) => updateBackup('retentionDays', v)"
+              style="width: 150px"
+            />
+            <span class="retention-value">{{ backupSettings.retentionDays }} 天</span>
+          </NFormItem>
+        </NForm>
+
+        <NButton type="primary" style="margin-top: 8px" @click="handleBackupNow">
+          <template #icon>
+            <NIcon :component="BackupIcon" />
+          </template>
+          立即备份
+        </NButton>
+
+        <NText depth="3" style="font-size: 12px; margin-top: 8px; display: block; line-height: 1.6">
+          备份文件存储在应用数据目录的 backups 文件夹中
+        </NText>
+      </div>
+
+      <!-- 备份列表 -->
+      <div v-if="backups.length > 0" class="backup-list">
+        <NText depth="2" style="font-weight: 500; margin-bottom: 8px; display: block">备份历史</NText>
+        <div class="backup-items">
+          <div v-for="backup in backups" :key="backup.filename" class="backup-item">
+            <div class="backup-info">
+              <NIcon :component="TimeIcon" size="16" style="color: #4A90D9" />
+              <span class="backup-time">{{ formatBackupTime(backup.createdAt) }}</span>
+              <span class="backup-size">{{ formatFileSize(backup.sizeBytes) }}</span>
+            </div>
+            <div class="backup-actions">
+              <NPopconfirm @positive-click="handleRestore(backup.filename)">
+                <template #trigger>
+                  <button class="backup-btn restore" title="恢复此备份">
+                    <NIcon :component="RestoreIcon" size="14" />
+                  </button>
+                </template>
+                恢复此备份将覆盖当前数据，确定继续？
+              </NPopconfirm>
+              <NPopconfirm @positive-click="handleDeleteBackup(backup.filename)">
+                <template #trigger>
+                  <button class="backup-btn delete" title="删除此备份">
+                    <NIcon :component="TrashIcon" size="14" />
+                  </button>
+                </template>
+                确定删除此备份？
+              </NPopconfirm>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <NDivider />
 
@@ -294,8 +442,101 @@ html.dark .page-content::-webkit-scrollbar-thumb {
   background: rgba(80, 80, 80, 0.4);
 }
 
+.backup-section,
 .data-section {
   margin-top: 8px;
+}
+
+.retention-value {
+  margin-left: 12px;
+  font-weight: 600;
+  color: #4A90D9;
+  font-size: 14px;
+}
+
+/* 备份列表 */
+.backup-list {
+  margin-top: 16px;
+}
+
+.backup-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+html.dark .backup-item {
+  background: #2a2a2a;
+  border-color: #444;
+}
+
+.backup-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backup-time {
+  font-size: 13px;
+  color: #333;
+}
+
+html.dark .backup-time {
+  color: #e0e0e0;
+}
+
+.backup-size {
+  font-size: 12px;
+  color: #888;
+}
+
+html.dark .backup-size {
+  color: #999;
+}
+
+.backup-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.backup-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.backup-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+html.dark .backup-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.backup-btn.restore:hover {
+  color: #4A90D9;
+}
+
+.backup-btn.delete:hover {
+  color: #E05252;
 }
 
 /* 字体设置区域 */

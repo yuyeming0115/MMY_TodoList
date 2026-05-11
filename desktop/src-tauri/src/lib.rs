@@ -2,11 +2,13 @@ mod models;
 mod database;
 mod commands;
 mod clipboard_monitor;
+mod backup;
 
 use std::sync::Arc;
 
 use database::Database;
 use clipboard_monitor::ClipboardMonitor;
+use backup::BackupManager;
 use tauri::{
     menu::{MenuItem, MenuBuilder},
     tray::TrayIconEvent,
@@ -28,6 +30,12 @@ pub fn run() {
                     win.set_focus().unwrap();
                 }
             } else if event.id == "quit" {
+                // 退出前执行备份
+                if let Some(backup_mgr) = app.try_state::<Arc<BackupManager>>() {
+                    if backup_mgr.should_backup_on_close() {
+                        backup_mgr.create_backup(app);
+                    }
+                }
                 app.exit(0);
                 std::process::exit(0);
             }
@@ -38,6 +46,14 @@ pub fn run() {
             let db_arc = Arc::new(db);
             app.manage(db_arc.clone());
 
+            // 初始化备份管理器
+            let backup_mgr = BackupManager::init(&app.handle(), db_arc.clone()).expect("备份管理器初始化失败");
+            let backup_arc = Arc::new(backup_mgr);
+            app.manage(backup_arc.clone());
+
+            // 启动定时备份任务
+            backup_arc.start_periodic_backup(app.handle().clone());
+
             // 启动剪贴板后台监控
             let monitor = ClipboardMonitor::new();
             let monitor_ref = &monitor;
@@ -47,11 +63,16 @@ pub fn run() {
             // 初始化系统托盘
             setup_tray(app)?;
 
-            // 监听窗口关闭事件，改为隐藏到托盘
+            // 监听窗口关闭事件，改为隐藏到托盘（同时备份）
             let app_handle = app.handle().clone();
+            let backup_for_hide = backup_arc.clone();
             if let Some(win) = app.get_webview_window("main") {
                 win.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // 隐藏前执行备份（如果启用）
+                        if backup_for_hide.should_backup_on_close() {
+                            backup_for_hide.create_backup(&app_handle);
+                        }
                         // 阻止关闭，改为隐藏到托盘
                         api.prevent_close();
                         if let Some(win) = app_handle.get_webview_window("main") {
@@ -112,6 +133,13 @@ pub fn run() {
             commands::get_image_for_drag,
             commands::reveal_file_in_folder,
             commands::cleanup_invalid_image_items,
+            // 备份命令
+            commands::get_backup_settings,
+            commands::update_backup_settings,
+            commands::create_backup_now,
+            commands::list_backups,
+            commands::restore_backup,
+            commands::delete_backup,
             // 系统托盘
             hide_to_tray,
             // 工具命令
@@ -127,6 +155,12 @@ pub fn run() {
 /// 隐藏窗口到系统托盘
 #[tauri::command]
 fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
+    // 隐藏前执行备份（如果启用）
+    if let Some(backup_mgr) = app.try_state::<Arc<BackupManager>>() {
+        if backup_mgr.should_backup_on_close() {
+            backup_mgr.create_backup(&app);
+        }
+    }
     if let Some(win) = app.get_webview_window("main") {
         win.hide().map_err(|e| e.to_string())?;
     }

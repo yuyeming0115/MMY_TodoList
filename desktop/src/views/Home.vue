@@ -91,6 +91,10 @@ const activePanel = ref<'tasks' | 'clipboard'>('tasks');
 const compactClipFilter = ref<string | null>(null);
 
 async function switchPanel(panel: 'tasks' | 'clipboard') {
+  // 如果在设置页面，先退出设置页面
+  if (currentPage.value === 'settings') {
+    currentPage.value = 'main';
+  }
   activePanel.value = panel;
   if (panel === 'clipboard') {
     // 先清理失效的图片项
@@ -392,6 +396,12 @@ function toggleTheme() {
   settingsStore.setTheme(next);
 }
 
+// 切换语言
+function toggleLanguage() {
+  const next = settingsStore.settings.language === 'zh' ? 'en' : 'zh';
+  settingsStore.setLanguage(next);
+}
+
 // 剪贴板视图切换
 const isClipboardStacked = computed(() => settingsStore.settings.clipboardViewMode === 'stacked');
 
@@ -689,6 +699,13 @@ async function hideToTray() {
                   <NIcon :component="isDark ? LightIcon : DarkIcon" size="22" />
                 </button>
                 <button
+                  :class="['sidebar-btn lang-btn', { active: settingsStore.settings.language === 'en' }]"
+                  @click="toggleLanguage"
+                  title="切换语言"
+                >
+                  {{ settingsStore.settings.language === 'zh' ? '中' : '英' }}
+                </button>
+                <button
                   :class="['sidebar-btn', { active: currentPage === 'settings' }]"
                   @click="currentPage === 'settings' ? goBackToMain() : openSettingsPage()"
                   title="设置"
@@ -914,6 +931,11 @@ html.dark .sidebar-btn:hover {
 html.dark .sidebar-btn.active {
   background: rgba(74, 144, 217, 0.25);
   color: #4A90D9;
+}
+
+.sidebar-btn.lang-btn {
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .sidebar-spacer {

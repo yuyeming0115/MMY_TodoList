@@ -94,3 +94,18 @@ export function isBuiltinClipboardCategory(id: string): boolean {
 // 限制常量
 export const FREE_CATEGORY_LIMIT = 9;
 export const FREE_TASK_PER_CATEGORY_LIMIT = 50;
+
+// 备份设置
+export interface BackupSettings {
+  backupDaily: boolean;
+  backupOnClose: boolean;
+  backupHourly: boolean;
+  retentionDays: number;
+}
+
+// 备份信息
+export interface BackupInfo {
+  filename: string;
+  createdAt: number;
+  sizeBytes: number;
+}

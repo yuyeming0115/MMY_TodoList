@@ -85,9 +85,9 @@ async function deleteSelected() {
   await clipboardStore.removeItems(ids);
   message.success(`已删除 ${ids.length} 项`);
   selectedIds.value = new Set();
-  if (ids.length === filteredItems.value.length) {
-    selectMode.value = false;
-  }
+  // 删除后自动退出选择模式
+  selectMode.value = false;
+  selectionAnchor.value = null;
 }
 
 // 过滤后的项目（精简模式下使用 props.categoryFilter，否则用 store 的过滤）
