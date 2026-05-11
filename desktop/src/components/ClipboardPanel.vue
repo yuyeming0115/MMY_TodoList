@@ -15,7 +15,17 @@ const props = defineProps<{
   compact?: boolean;
   categoryFilter?: string | null;
   stacked?: boolean;
+  stackGap?: number;
 }>();
+
+// 计算样式（确保响应式更新）
+const stackStyle = computed(() => {
+  if (props.stacked) {
+    const gap = props.stackGap ?? 64;
+    return { '--stack-gap': `${gap}px` };
+  }
+  return {};
+});
 
 const isDragging = ref(false);
 const dragList = ref<ClipboardItem[]>([]);
@@ -246,7 +256,7 @@ function cancelEdit() {
 </script>
 
 <template>
-  <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" @contextmenu="handleListContextMenu">
+  <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" :style="stackStyle" @contextmenu="handleListContextMenu">
     <!-- 选择工具栏 -->
     <div v-if="selectMode || selectedIds.size > 0" class="selection-toolbar">
       <span class="selection-count">已选 {{ selectedIds.size }} / {{ filteredItems.length }}</span>
@@ -557,8 +567,12 @@ html.dark .cleanup-btn:hover {
 
 /* 层叠模式间距 */
 .stacked-list .item-wrapper {
-  margin-bottom: -10px;
+  margin-bottom: calc(-80px + var(--stack-gap, 64px));
   transition: transform 0.2s ease, z-index 0s;
+}
+
+.stacked-list .item-wrapper:last-child {
+  margin-bottom: 0;
 }
 
 .stacked-list .item-wrapper:nth-child(odd) {

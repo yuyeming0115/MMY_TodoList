@@ -36,6 +36,7 @@ export interface AppSettings {
   fontSize: number;
   fontFamily: string;
   clipboardViewMode: 'normal' | 'stacked';
+  clipboardStackGap: number; // 层叠模式卡片间距（px）
 }
 
 export interface ExportData {

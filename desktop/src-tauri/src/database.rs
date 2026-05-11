@@ -94,6 +94,10 @@ impl Database {
             "ALTER TABLE settings ADD COLUMN clipboard_view_mode TEXT DEFAULT 'normal'",
             [],
         ).ok();
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN clipboard_stack_gap INTEGER DEFAULT 64",
+            [],
+        ).ok();
 
         // 初始化默认设置
         conn.execute(
@@ -446,7 +450,7 @@ impl Database {
     pub fn get_settings(&self) -> SqliteResult<AppSettings> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT theme_mode, language, hide_completed_tasks, launch_at_startup, window_width, window_height, window_x, window_y, font_size, font_family, clipboard_view_mode FROM settings WHERE id = 1",
+            "SELECT theme_mode, language, hide_completed_tasks, launch_at_startup, window_width, window_height, window_x, window_y, font_size, font_family, clipboard_view_mode, clipboard_stack_gap FROM settings WHERE id = 1",
             [],
             |row| Ok(AppSettings {
                 theme_mode: row.get(0)?,
@@ -460,6 +464,7 @@ impl Database {
                 font_size: row.get::<_, i32>(8)?,
                 font_family: row.get(9)?,
                 clipboard_view_mode: row.get(10).unwrap_or_else(|_| "normal".to_string()),
+                clipboard_stack_gap: row.get::<_, i32>(11).unwrap_or(64),
             }),
         )
     }
@@ -467,7 +472,7 @@ impl Database {
     pub fn update_settings(&self, settings: &AppSettings) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE settings SET theme_mode = ?1, language = ?2, hide_completed_tasks = ?3, launch_at_startup = ?4, window_width = ?5, window_height = ?6, window_x = ?7, window_y = ?8, font_size = ?9, font_family = ?10, clipboard_view_mode = ?11 WHERE id = 1",
+            "UPDATE settings SET theme_mode = ?1, language = ?2, hide_completed_tasks = ?3, launch_at_startup = ?4, window_width = ?5, window_height = ?6, window_x = ?7, window_y = ?8, font_size = ?9, font_family = ?10, clipboard_view_mode = ?11, clipboard_stack_gap = ?12 WHERE id = 1",
             rusqlite::params![
                 &settings.theme_mode,
                 &settings.language,
@@ -480,6 +485,7 @@ impl Database {
                 &settings.font_size,
                 &settings.font_family,
                 &settings.clipboard_view_mode,
+                &settings.clipboard_stack_gap,
             ],
         )?;
         Ok(())

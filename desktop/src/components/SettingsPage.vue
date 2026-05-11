@@ -348,6 +348,52 @@ function goBack() {
 
       <NDivider />
 
+      <!-- 层叠间距设置 -->
+      <div class="stack-gap-section">
+        <NText depth="2" style="font-weight: 500">层叠间距</NText>
+
+        <NForm label-placement="left" label-width="120" style="margin-top: 12px">
+          <NFormItem label="卡片间距">
+            <div class="gap-control">
+              <NSlider
+                :value="settingsStore.settings.clipboardStackGap"
+                :min="20"
+                :max="120"
+                :step="1"
+                @update:value="(v: number) => settingsStore.setClipboardStackGap(v)"
+                style="width: 150px"
+              />
+              <span class="gap-value">{{ settingsStore.settings.clipboardStackGap }}px</span>
+            </div>
+          </NFormItem>
+        </NForm>
+
+        <NText depth="3" style="font-size: 12px; margin-top: 4px; display: block">
+          同时应用于任务和剪贴板的层叠视图
+        </NText>
+
+        <!-- 层叠预览 -->
+        <div class="preview-label">
+          <NText depth="3" style="font-size: 12px">层叠效果预览</NText>
+        </div>
+        <div class="stack-preview">
+          <div
+            v-for="i in 5"
+            :key="i"
+            class="preview-card-stack"
+            :style="{ marginBottom: `${-80 + settingsStore.settings.clipboardStackGap}px`, transform: i % 2 === 0 ? 'translateX(-3px)' : 'translateX(3px)' }"
+          >
+            <div class="preview-check-stack" />
+            <div class="preview-content-stack">
+              <div class="preview-title-stack">剪贴板项目 {{ i }}</div>
+              <div class="preview-desc-stack">内容预览...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <NDivider />
+
       <!-- 数据管理 -->
       <div class="data-section">
         <NText depth="2" style="font-weight: 500">数据管理</NText>
@@ -652,6 +698,96 @@ html.dark .preview-desc {
 }
 
 html.dark .preview-time {
+  color: #999;
+}
+
+/* 层叠间距设置 */
+.stack-gap-section {
+  margin-top: 8px;
+}
+
+.gap-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gap-value {
+  min-width: 50px;
+  font-weight: 600;
+  color: #4A90D9;
+  font-size: 14px;
+  text-align: right;
+}
+
+/* 层叠预览卡片 */
+.stack-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 16px;
+  background: #f5f5f5;
+  border-radius: 12px;
+  margin-top: 8px;
+}
+
+html.dark .stack-preview {
+  background: #1a1a1a;
+}
+
+.preview-card-stack {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e0e0e0;
+  border-left: 3px solid #4A90D9;
+  position: relative;
+  transition: margin-bottom 0.2s ease;
+}
+
+html.dark .preview-card-stack {
+  background: #2a2a2a;
+  border-color: #444;
+}
+
+.preview-card-stack:last-child {
+  margin-bottom: 0 !important;
+}
+
+.preview-check-stack {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ccc;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.preview-content-stack {
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-title-stack {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+html.dark .preview-title-stack {
+  color: #e0e0e0;
+}
+
+.preview-desc-stack {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+html.dark .preview-desc-stack {
   color: #999;
 }
 </style>

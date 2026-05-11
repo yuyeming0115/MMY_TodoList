@@ -409,6 +409,22 @@ function toggleClipboardView() {
   settingsStore.setClipboardViewMode(isClipboardStacked.value ? 'normal' : 'stacked');
 }
 
+// 任务视图切换
+const taskViewMode = ref<'normal' | 'stacked'>('normal');
+
+function toggleTaskView() {
+  taskViewMode.value = taskViewMode.value === 'normal' ? 'stacked' : 'normal';
+}
+
+// 计算层叠样式（响应式更新）
+const taskStackStyle = computed(() => {
+  if (taskViewMode.value === 'stacked') {
+    const gap = settingsStore.settings.clipboardStackGap ?? 64;
+    return { '--stack-gap': `${gap}px` };
+  }
+  return {};
+});
+
 // 打开任务表单（改为快速添加空白任务）
 async function openAddTask() {
   await categoryStore.ensureDefaultCategory();
@@ -647,7 +663,12 @@ async function hideToTray() {
 
             <!-- 第二行：搜索栏 -->
             <div v-if="!isPinned" class="search-wrapper">
-              <SearchBar v-if="activePanel === 'tasks'" />
+              <div v-if="activePanel === 'tasks'" class="task-search-row">
+                <SearchBar />
+                <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? '切换列表视图' : '切换层叠视图'">
+                  <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
+                </button>
+              </div>
               <div v-else-if="activePanel === 'clipboard'" class="clipboard-search-row">
                 <NInput
                   v-model:value="clipboardSearchQuery"
@@ -719,7 +740,7 @@ async function hideToTray() {
             <div class="main-content">
               <!-- 任务面板 -->
               <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isPinned }">
-                <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned }" @contextmenu="handleTaskListContextMenu">
+                <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned, 'stacked-list': taskViewMode === 'stacked' }" :style="taskStackStyle" @contextmenu="handleTaskListContextMenu">
                   <div v-if="filteredTasks.length === 0" class="empty">
                     暂无任务
                   </div>
@@ -788,7 +809,7 @@ async function hideToTray() {
 
               <!-- 剪贴板面板 -->
               <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel" :class="{ 'compact-panel': isPinned }">
-                <ClipboardPanel :compact="isPinned" :category-filter="compactClipFilter" :stacked="isClipboardStacked" />
+                <ClipboardPanel :compact="isPinned" :category-filter="compactClipFilter" :stacked="isClipboardStacked" :stack-gap="settingsStore.settings.clipboardStackGap" />
               </div>
 
               <!-- 设置页面 -->
@@ -1111,6 +1132,18 @@ html.dark .win-controls .win-btn:hover {
   padding: 4px 0 8px;
 }
 
+/* 任务搜索行 */
+.task-search-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.task-search-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 /* 剪贴板搜索行 */
 .clipboard-search-row {
   display: flex;
@@ -1292,6 +1325,29 @@ html.dark .task-list:hover::-webkit-scrollbar-thumb:hover {
   width: 100%;
   margin-bottom: 10px;
   user-select: none;
+}
+
+/* 任务层叠模式 */
+.task-list.stacked-list .task-wrapper {
+  margin-bottom: calc(-80px + var(--stack-gap, 64px));
+  transition: transform 0.2s ease, z-index 0s;
+}
+
+.task-list.stacked-list .task-wrapper:last-child {
+  margin-bottom: 0;
+}
+
+.task-list.stacked-list .task-wrapper:nth-child(odd) {
+  transform: translateX(3px);
+}
+
+.task-list.stacked-list .task-wrapper:nth-child(even) {
+  transform: translateX(-3px);
+}
+
+.task-list.stacked-list .task-wrapper:hover {
+  z-index: 100;
+  transform: translateY(-8px) scale(1.02);
 }
 
 /* 拖拽中：禁用卡片 hover 效果，避免干扰排挤动画 */

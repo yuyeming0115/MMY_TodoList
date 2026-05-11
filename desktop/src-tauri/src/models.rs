@@ -85,6 +85,7 @@ pub struct AppSettings {
     pub font_size: i32,
     pub font_family: String,
     pub clipboard_view_mode: String,
+    pub clipboard_stack_gap: i32, // 层叠模式卡片间距（px）
 }
 
 impl Default for AppSettings {
@@ -101,6 +102,7 @@ impl Default for AppSettings {
             font_size: 14,
             font_family: String::new(),
             clipboard_view_mode: "normal".to_string(),
+            clipboard_stack_gap: 64,
         }
     }
 }
