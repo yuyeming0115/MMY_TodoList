@@ -280,6 +280,7 @@ function goBack() {
             <div class="backup-info">
               <NIcon :component="TimeIcon" size="16" style="color: #4A90D9" />
               <span class="backup-time">{{ formatBackupTime(backup.createdAt) }}</span>
+              <span class="backup-filename">{{ backup.filename }}</span>
               <span class="backup-size">{{ formatFileSize(backup.sizeBytes) }}</span>
             </div>
             <div class="backup-actions">
@@ -592,6 +593,19 @@ html.dark .backup-time {
 
 html.dark .backup-size {
   color: #999;
+}
+
+.backup-filename {
+  font-size: 12px;
+  color: #666;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.dark .backup-filename {
+  color: #888;
 }
 
 .backup-actions {

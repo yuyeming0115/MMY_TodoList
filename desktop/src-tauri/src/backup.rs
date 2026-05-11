@@ -169,7 +169,7 @@ impl BackupManager {
                         .unwrap_or("");
 
                     if filename.starts_with("backup_") {
-                        let timestamp_str = &filename[7..filename.len() - 7];
+                        let timestamp_str = &filename[7..filename.len() - 8];
                         if let Some(backup_time) = Self::parse_backup_time(timestamp_str) {
                             backups.push((path, backup_time));
                         }
@@ -236,9 +236,9 @@ impl BackupManager {
                     let metadata = entry.metadata().ok();
                     let size_bytes = metadata.map(|m| m.len()).unwrap_or(0);
 
-                    // 解析创建时间
+                    // 解析创建时间 (跳过 "backup_" 7 字符和 ".mmytodo" 8 字符)
                     let created_at = Self::parse_backup_time(
-                        &filename[7..filename.len() - 7]
+                        &filename[7..filename.len() - 8]
                     ).unwrap_or(0);
 
                     backups.push(BackupInfo {
@@ -405,7 +405,7 @@ impl BackupManager {
                         .unwrap_or("");
 
                     if filename.starts_with("backup_") {
-                        let timestamp_str = &filename[7..filename.len() - 7];
+                        let timestamp_str = &filename[7..filename.len() - 8];
                         if let Some(backup_time) = Self::parse_backup_time(timestamp_str) {
                             if now - backup_time > retention_ms {
                                 fs::remove_file(&path).ok();
