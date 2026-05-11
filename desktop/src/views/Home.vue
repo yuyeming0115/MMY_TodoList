@@ -21,6 +21,7 @@ import { useCategoryStore } from '../stores/categoryStore';
 import { useTaskStore } from '../stores/taskStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useClipboardStore } from '../stores/clipboardStore';
+import { useI18n } from '../composables/useI18n';
 import CategoryTabs from '../components/CategoryTabs.vue';
 import ClipboardCategoryTabs from '../components/ClipboardCategoryTabs.vue';
 import ClipboardPanel from '../components/ClipboardPanel.vue';
@@ -75,6 +76,7 @@ const settingsStore = useSettingsStore();
 const clipboardStore = useClipboardStore();
 const appWindow = getCurrentWindow();
 const message = useMessage();
+const { t, isEnglish } = useI18n();
 
 // 窗口置顶状态
 const isPinned = ref(false);
@@ -609,14 +611,14 @@ async function hideToTray() {
                 <button
                   :class="['clip-pill', { active: compactClipFilter === null }]"
                   @click="compactClipFilter = null"
-                >全部</button>
+                >{{ t('compact.all') }}</button>
                 <button
                   v-for="cat in clipboardStore.builtinCategories"
                   :key="cat.id"
                   :class="['clip-pill', { active: compactClipFilter === cat.id }]"
                   :style="{ '--pill-color': cat.color }"
                   @click="compactClipFilter = cat.id"
-                >{{ cat.name === '文本' ? '文' : cat.name === '图像' ? '图' : '★' }}</button>
+                >{{ cat.name === '文本' || cat.name === 'Text' ? t('compact.text') : cat.name === '图像' || cat.name === 'Image' ? t('compact.image') : t('compact.star') }}</button>
               </div>
 
               <!-- 任务面板：添加任务按钮 -->
@@ -627,7 +629,7 @@ async function hideToTray() {
                 class="header-action-btn"
               >
                 <template #icon><NIcon :component="AddIcon" /></template>
-                添加任务
+                {{ t('header.addTask') }}
               </NButton>
 
               <!-- 剪贴板面板：从剪贴板粘贴按钮 -->
@@ -638,7 +640,7 @@ async function hideToTray() {
                 class="header-action-btn"
               >
                 <template #icon><NIcon :component="CopyIcon" /></template>
-                粘贴
+                {{ t('header.paste') }}
               </NButton>
 
               <!-- 窗口控制按钮 -->
@@ -665,20 +667,20 @@ async function hideToTray() {
             <div v-if="!isPinned" class="search-wrapper">
               <div v-if="activePanel === 'tasks'" class="task-search-row">
                 <SearchBar />
-                <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? '切换列表视图' : '切换层叠视图'">
+                <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
                   <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
                 </button>
               </div>
               <div v-else-if="activePanel === 'clipboard'" class="clipboard-search-row">
                 <NInput
                   v-model:value="clipboardSearchQuery"
-                  placeholder="搜索剪贴板..."
+                  :placeholder="t('header.searchClipboard')"
                   clearable size="small"
                   class="clipboard-search-input"
                   @update:value="onClipboardSearch"
                   @clear="clipboardSearchQuery = ''"
                 />
-                <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? '切换列表视图' : '切换层叠视图'">
+                <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
                   <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
                 </button>
               </div>
@@ -686,7 +688,7 @@ async function hideToTray() {
 
             <!-- 精简模式下剪贴板视图切换按钮（紧贴右侧，最小化占用） -->
             <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clipboard-actions">
-              <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? '切换列表视图' : '切换层叠视图'">
+              <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
                 <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
               </button>
             </div>
@@ -700,14 +702,14 @@ async function hideToTray() {
                 <button
                   :class="['sidebar-btn', { active: activePanel === 'tasks' && currentPage === 'main' }]"
                   @click="switchPanel('tasks')"
-                  title="任务"
+                  :title="t('sidebar.tasks')"
                 >
                   <NIcon :component="ListIcon" size="22" />
                 </button>
                 <button
                   :class="['sidebar-btn', { active: activePanel === 'clipboard' && currentPage === 'main' }]"
                   @click="switchPanel('clipboard')"
-                  title="剪贴板"
+                  :title="t('sidebar.clipboard')"
                 >
                   <NIcon :component="ClipboardIcon" size="22" />
                 </button>
@@ -715,21 +717,21 @@ async function hideToTray() {
                 <button
                   :class="['sidebar-btn', { active: !isDark }]"
                   @click="toggleTheme"
-                  title="切换主题"
+                  :title="t('sidebar.toggleTheme')"
                 >
                   <NIcon :component="isDark ? LightIcon : DarkIcon" size="22" />
                 </button>
                 <button
                   :class="['sidebar-btn lang-btn', { active: settingsStore.settings.language === 'en' }]"
                   @click="toggleLanguage"
-                  title="切换语言"
+                  :title="t('sidebar.toggleLanguage')"
                 >
-                  {{ settingsStore.settings.language === 'zh' ? '中' : '英' }}
+                  {{ settingsStore.settings.language === 'zh' ? '中' : 'En' }}
                 </button>
                 <button
                   :class="['sidebar-btn', { active: currentPage === 'settings' }]"
                   @click="currentPage === 'settings' ? goBackToMain() : openSettingsPage()"
-                  title="设置"
+                  :title="t('sidebar.settings')"
                 >
                   <NIcon :component="SettingsIcon" size="22" />
                 </button>
@@ -742,7 +744,7 @@ async function hideToTray() {
               <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isPinned }">
                 <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned, 'stacked-list': taskViewMode === 'stacked' }" :style="taskStackStyle" @contextmenu="handleTaskListContextMenu">
                   <div v-if="filteredTasks.length === 0" class="empty">
-                    暂无任务
+                    {{ t('empty.noTasks') }}
                   </div>
                   <draggable
                     v-else
@@ -800,7 +802,7 @@ async function hideToTray() {
                   :y="taskListContextMenuY"
                   :show="taskListContextMenuShow"
                   :options="[
-                    { label: '添加任务', key: 'addTask', icon: () => h(NIcon, { component: AddIcon, size: 16 }) }
+                    { label: t('contextMenu.addTask'), key: 'addTask', icon: () => h(NIcon, { component: AddIcon, size: 16 }) }
                   ]"
                   @select="handleTaskListMenuSelect"
                   @clickoutside="taskListContextMenuShow = false"

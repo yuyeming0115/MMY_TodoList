@@ -9,12 +9,13 @@ import {
   TrashOutline as TrashIcon, RefreshOutline as RestoreIcon, TimeOutline as TimeIcon
 } from '@vicons/ionicons5';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useI18n } from '../composables/useI18n';
 import { useMessage } from 'naive-ui';
 import { exportData, importData, getBackupSettings, updateBackupSettings, createBackupNow, listBackups, restoreBackup, deleteBackup } from '../utils/db';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import type { ExportData, BackupSettings, BackupInfo } from '../types';
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 
 const emit = defineEmits<{
   (e: 'back'): void;
@@ -22,13 +23,14 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingsStore();
 const message = useMessage();
+const { t } = useI18n();
 
 // 字体选项
-const fontOptions = [
-  { label: '系统默认', value: '' },
+const fontOptions = computed(() => [
+  { label: t('settings.fontDefault'), value: '' },
   { label: '阿里妈妈东方大楷', value: 'AlimamaDongfangDakai' },
   { label: '抖音美好体', value: 'DouyinMeihaoTi' },
-];
+]);
 
 // 备份设置
 const backupSettings = ref<BackupSettings>({
@@ -58,9 +60,9 @@ async function updateBackup(key: keyof BackupSettings, value: boolean | number) 
   (backupSettings.value as any)[key] = value;
   try {
     await updateBackupSettings(backupSettings.value);
-    message.success('设置已保存');
+    message.success(t('messages.settingsSaved'));
   } catch (e) {
-    message.error('保存设置失败');
+    message.error(t('messages.backupFailed'));
     console.error(e);
   }
 }
@@ -69,10 +71,10 @@ async function updateBackup(key: keyof BackupSettings, value: boolean | number) 
 async function handleBackupNow() {
   try {
     const filename = await createBackupNow();
-    message.success(`备份成功：${filename}`);
+    message.success(t('messages.backupSuccess', { filename }));
     await loadBackupData();
   } catch (e) {
-    message.error('备份失败');
+    message.error(t('messages.backupFailed'));
     console.error(e);
   }
 }
@@ -81,10 +83,10 @@ async function handleBackupNow() {
 async function handleRestore(filename: string) {
   try {
     await restoreBackup(filename);
-    message.success('恢复成功，正在刷新...');
+    message.success(t('messages.restoreSuccess'));
     setTimeout(() => window.location.reload(), 1000);
   } catch (e) {
-    message.error('恢复失败');
+    message.error(t('messages.restoreFailed'));
     console.error(e);
   }
 }
@@ -93,10 +95,10 @@ async function handleRestore(filename: string) {
 async function handleDeleteBackup(filename: string) {
   try {
     await deleteBackup(filename);
-    message.success('删除成功');
+    message.success(t('messages.deleteSuccess'));
     await loadBackupData();
   } catch (e) {
-    message.error('删除失败');
+    message.error(t('messages.deleteFailed'));
     console.error(e);
   }
 }
@@ -137,9 +139,9 @@ async function handleExport() {
     // writeFile 需要路径字符串
     await writeFile(filePath.toString(), bytes);
 
-    message.success(`导出成功：${filePath}`);
+    message.success(t('messages.exportSuccess', { path: filePath }));
   } catch (e) {
-    message.error('导出失败');
+    message.error(t('messages.exportFailed'));
     console.error('导出失败:', e);
   }
 }
@@ -159,16 +161,16 @@ async function handleImport() {
       const data = JSON.parse(text) as ExportData;
 
       if (!data.version || !data.categories || !data.tasks) {
-        message.error('无效的备份文件');
+        message.error(t('messages.invalidFile'));
         return;
       }
 
       await importData(data);
-      message.success('导入成功，数据已更新');
+      message.success(t('messages.importSuccess'));
 
       window.location.reload();
     } catch (e) {
-      message.error('导入失败');
+      message.error(t('messages.importFailed'));
       console.error(e);
     }
   };
@@ -190,56 +192,62 @@ function goBack() {
           <NIcon :component="BackIcon" size="20" />
         </template>
       </NButton>
-      <span class="page-title">设置</span>
+      <span class="page-title">{{ t('settings.title') }}</span>
     </header>
 
     <!-- 页面内容 -->
     <div class="page-content">
-      <NForm label-placement="left" label-width="100">
-        <NFormItem label="隐藏已完成">
+      <!-- 基础设置：两个开关一行 -->
+      <div class="settings-row">
+        <div class="setting-item">
+          <span class="setting-label">{{ t('settings.hideCompleted') }}</span>
           <NSwitch
             :value="settingsStore.settings.hideCompletedTasks"
             @update:value="(v: boolean) => settingsStore.setHideCompleted(v)"
           />
-        </NFormItem>
-
-        <NFormItem label="开机启动">
+        </div>
+        <div class="setting-item">
+          <span class="setting-label">{{ t('settings.launchAtStartup') }}</span>
           <NSwitch
             :value="settingsStore.settings.launchAtStartup"
             @update:value="(v: boolean) => settingsStore.setLaunchAtStartup(v)"
           />
-        </NFormItem>
-      </NForm>
+        </div>
+      </div>
 
       <NDivider />
 
       <!-- 自动备份设置 -->
       <div class="backup-section">
-        <NText depth="2" style="font-weight: 500">自动备份</NText>
+        <NText depth="2" style="font-weight: 500">{{ t('settings.autoBackup') }}</NText>
 
-        <NForm label-placement="left" label-width="120" style="margin-top: 12px">
-          <NFormItem label="每日备份">
+        <!-- 三个备份开关一行 -->
+        <div class="settings-row backup-switches">
+          <div class="setting-item">
+            <span class="setting-label">{{ t('settings.backupDaily') }}</span>
             <NSwitch
               :value="backupSettings.backupDaily"
               @update:value="(v: boolean) => updateBackup('backupDaily', v)"
             />
-          </NFormItem>
-
-          <NFormItem label="关闭时备份">
+          </div>
+          <div class="setting-item">
+            <span class="setting-label">{{ t('settings.backupOnClose') }}</span>
             <NSwitch
               :value="backupSettings.backupOnClose"
               @update:value="(v: boolean) => updateBackup('backupOnClose', v)"
             />
-          </NFormItem>
-
-          <NFormItem label="每小时备份">
+          </div>
+          <div class="setting-item">
+            <span class="setting-label">{{ t('settings.backupHourly') }}</span>
             <NSwitch
               :value="backupSettings.backupHourly"
               @update:value="(v: boolean) => updateBackup('backupHourly', v)"
             />
-          </NFormItem>
+          </div>
+        </div>
 
-          <NFormItem label="保留天数">
+        <NForm label-placement="left" label-width="120" style="margin-top: 8px">
+          <NFormItem :label="t('settings.retentionDays')">
             <NSlider
               :value="backupSettings.retentionDays"
               :min="1"
@@ -248,7 +256,7 @@ function goBack() {
               @update:value="(v: number) => updateBackup('retentionDays', v)"
               style="width: 150px"
             />
-            <span class="retention-value">{{ backupSettings.retentionDays }} 天</span>
+            <span class="retention-value">{{ backupSettings.retentionDays }} {{ t('settings.daysUnit') }}</span>
           </NFormItem>
         </NForm>
 
@@ -256,19 +264,19 @@ function goBack() {
           <template #icon>
             <NIcon :component="BackupIcon" />
           </template>
-          立即备份
+          {{ t('settings.backupNow') }}
         </NButton>
 
         <NText depth="3" style="font-size: 12px; margin-top: 8px; display: block; line-height: 1.6">
-          备份文件存储在应用数据目录的 backups 文件夹中
+          {{ t('settings.backupLocation') }}
         </NText>
       </div>
 
-      <!-- 备份列表 -->
+      <!-- 备份列表（最多显示7个） -->
       <div v-if="backups.length > 0" class="backup-list">
-        <NText depth="2" style="font-weight: 500; margin-bottom: 8px; display: block">备份历史</NText>
+        <NText depth="2" style="font-weight: 500; margin-bottom: 8px; display: block">{{ t('settings.backupHistory') }}</NText>
         <div class="backup-items">
-          <div v-for="backup in backups" :key="backup.filename" class="backup-item">
+          <div v-for="backup in backups.slice(0, 7)" :key="backup.filename" class="backup-item">
             <div class="backup-info">
               <NIcon :component="TimeIcon" size="16" style="color: #4A90D9" />
               <span class="backup-time">{{ formatBackupTime(backup.createdAt) }}</span>
@@ -277,19 +285,19 @@ function goBack() {
             <div class="backup-actions">
               <NPopconfirm @positive-click="handleRestore(backup.filename)">
                 <template #trigger>
-                  <button class="backup-btn restore" title="恢复此备份">
+                  <button class="backup-btn restore" :title="t('settings.restore')">
                     <NIcon :component="RestoreIcon" size="14" />
                   </button>
                 </template>
-                恢复此备份将覆盖当前数据，确定继续？
+                {{ t('settings.restoreConfirm') }}
               </NPopconfirm>
               <NPopconfirm @positive-click="handleDeleteBackup(backup.filename)">
                 <template #trigger>
-                  <button class="backup-btn delete" title="删除此备份">
+                  <button class="backup-btn delete" :title="t('settings.deleteBackup')">
                     <NIcon :component="TrashIcon" size="14" />
                   </button>
                 </template>
-                确定删除此备份？
+                {{ t('settings.deleteConfirm') }}
               </NPopconfirm>
             </div>
           </div>
@@ -300,10 +308,10 @@ function goBack() {
 
       <!-- 字体设置 -->
       <div class="font-section">
-        <NText depth="2" style="font-weight: 500">字体设置</NText>
+        <NText depth="2" style="font-weight: 500">{{ t('settings.fontSettings') }}</NText>
 
         <NForm label-placement="left" label-width="100" style="margin-top: 12px">
-          <NFormItem label="字体大小">
+          <NFormItem :label="t('settings.fontSize')">
             <div class="font-size-control">
               <NSlider
                 :value="settingsStore.settings.fontSize"
@@ -316,7 +324,7 @@ function goBack() {
             </div>
           </NFormItem>
 
-          <NFormItem label="字体">
+          <NFormItem :label="t('settings.fontFamily')">
             <NSelect
               :value="settingsStore.settings.fontFamily"
               :options="fontOptions"
@@ -327,20 +335,20 @@ function goBack() {
 
         <!-- 实时预览卡片 -->
         <div class="preview-label">
-          <NText depth="3" style="font-size: 12px">预览效果</NText>
+          <NText depth="3" style="font-size: 12px">{{ t('settings.preview') }}</NText>
         </div>
         <div class="preview-card">
           <div class="preview-check" />
           <div class="preview-content">
-            <div class="preview-title">这是一段预览任务标题</div>
-            <div class="preview-desc">描述文字预览...</div>
+            <div class="preview-title">{{ t('settings.previewTitle') }}</div>
+            <div class="preview-desc">{{ t('settings.previewDesc') }}</div>
             <div class="preview-meta">
               <span class="preview-stars">
                 <NIcon :component="StarIcon" size="14" class="star filled" />
                 <NIcon :component="StarIcon" size="14" class="star filled" />
                 <NIcon :component="StarIcon" size="14" class="star" />
               </span>
-              <span class="preview-time">开始 截止</span>
+              <span class="preview-time">{{ t('settings.previewStart') }} {{ t('settings.previewDue') }}</span>
             </div>
           </div>
         </div>
@@ -350,10 +358,10 @@ function goBack() {
 
       <!-- 层叠间距设置 -->
       <div class="stack-gap-section">
-        <NText depth="2" style="font-weight: 500">层叠间距</NText>
+        <NText depth="2" style="font-weight: 500">{{ t('settings.stackGap') }}</NText>
 
         <NForm label-placement="left" label-width="120" style="margin-top: 12px">
-          <NFormItem label="卡片间距">
+          <NFormItem :label="t('settings.cardGap')">
             <div class="gap-control">
               <NSlider
                 :value="settingsStore.settings.clipboardStackGap"
@@ -369,12 +377,12 @@ function goBack() {
         </NForm>
 
         <NText depth="3" style="font-size: 12px; margin-top: 4px; display: block">
-          同时应用于任务和剪贴板的层叠视图
+          {{ t('settings.stackApply') }}
         </NText>
 
         <!-- 层叠预览 -->
         <div class="preview-label">
-          <NText depth="3" style="font-size: 12px">层叠效果预览</NText>
+          <NText depth="3" style="font-size: 12px">{{ t('settings.stackPreview') }}</NText>
         </div>
         <div class="stack-preview">
           <div
@@ -385,8 +393,8 @@ function goBack() {
           >
             <div class="preview-check-stack" />
             <div class="preview-content-stack">
-              <div class="preview-title-stack">剪贴板项目 {{ i }}</div>
-              <div class="preview-desc-stack">内容预览...</div>
+              <div class="preview-title-stack">{{ t('settings.clipboardItem') }} {{ i }}</div>
+              <div class="preview-desc-stack">{{ t('settings.contentPreview') }}</div>
             </div>
           </div>
         </div>
@@ -396,26 +404,26 @@ function goBack() {
 
       <!-- 数据管理 -->
       <div class="data-section">
-        <NText depth="2" style="font-weight: 500">数据管理</NText>
+        <NText depth="2" style="font-weight: 500">{{ t('settings.dataManagement') }}</NText>
         <NSpace :size="12" style="margin-top: 12px">
           <NButton @click="handleExport">
             <template #icon>
               <NIcon :component="ExportIcon" />
             </template>
-            导出数据
+            {{ t('settings.exportData') }}
           </NButton>
           <NButton @click="handleImport">
             <template #icon>
               <NIcon :component="ImportIcon" />
             </template>
-            导入数据
+            {{ t('settings.importData') }}
           </NButton>
         </NSpace>
         <NText depth="3" style="font-size: 12px; margin-top: 8px; display: block; line-height: 1.6">
-          导出内容：任务分类、任务列表、剪贴板分类、剪贴板项目、设置
+          {{ t('settings.exportContent') }}
         </NText>
         <NText depth="3" style="font-size: 12px; display: block">
-          文件格式：.mmytodo（点击导出后选择保存路径）
+          {{ t('settings.fileFormat') }}
         </NText>
       </div>
     </div>
@@ -463,6 +471,36 @@ html.dark .page-title {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+
+  /* 设置项一行两个 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 100, 100, 0.2) transparent;
+}
+
+/* 设置项一行布局 */
+.settings-row {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.setting-label {
+  font-size: 14px;
+  color: #333;
+  min-width: 80px;
+}
+
+html.dark .setting-label {
+  color: #e0e0e0;
+}
+
+.page-content {
   scrollbar-width: thin;
   scrollbar-color: rgba(100, 100, 100, 0.2) transparent;
 }
@@ -509,6 +547,12 @@ html.dark .page-content::-webkit-scrollbar-thumb {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* 备份开关一行三个 */
+.backup-switches {
+  margin-top: 12px;
+  gap: 16px;
 }
 
 .backup-item {

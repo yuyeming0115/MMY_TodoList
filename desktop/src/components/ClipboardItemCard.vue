@@ -8,6 +8,7 @@ import {
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
+import { useI18n } from '../composables/useI18n';
 import { BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 
 const props = defineProps<{
@@ -30,6 +31,7 @@ const emit = defineEmits<{
 
 const message = useMessage();
 const clipboardStore = useClipboardStore();
+const { t } = useI18n();
 const showContextMenu = ref(false);
 const contextMenuX = ref(0);
 const contextMenuY = ref(0);
@@ -65,10 +67,17 @@ const expiryLabel = computed(() => {
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const days = Math.floor(hours / 24);
 
-  if (days > 0) return `${days}天后过期`;
-  if (hours > 0) return `${hours}小时后过期`;
-  const mins = Math.floor(diff / (1000 * 60));
-  return `${mins}分钟后过期`;
+  let timeStr: string;
+  if (days > 0) {
+    timeStr = `${days}${t('expiry.daysLater')}`;
+  } else if (hours > 0) {
+    timeStr = `${hours}${t('expiry.hoursLater')}`;
+  } else {
+    const mins = Math.floor(diff / (1000 * 60));
+    timeStr = `${mins}${t('expiry.minutesLater')}`;
+  }
+
+  return t('expiry.expiresIn', { time: timeStr });
 });
 
 const isExpiringSoon = computed(() => {
@@ -107,32 +116,32 @@ const categoryOptions = computed(() => {
 
 const contextMenuOptions = computed(() => {
   const options: any[] = [
-    { label: '复制', key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
-    { label: isFavorite.value ? '取消收藏' : '收藏', key: 'favorite', icon: () => h(NIcon, { component: isFavorite.value ? StarFilledIcon : StarIcon, size: 16, style: { color: isFavorite.value ? '#F39C12' : '#333' } }) },
+    { label: t('contextMenu.copy'), key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
+    { label: isFavorite.value ? t('contextMenu.unfavorite') : t('contextMenu.favorite'), key: 'favorite', icon: () => h(NIcon, { component: isFavorite.value ? StarFilledIcon : StarIcon, size: 16, style: { color: isFavorite.value ? '#F39C12' : '#333' } }) },
   ];
 
   // 只有文本类型才显示编辑
   if (isTextItem.value) {
-    options.push({ label: '编辑', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 16 }) });
+    options.push({ label: t('contextMenu.edit'), key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 16 }) });
   }
 
   // 图片类型且有本地路径，显示"打开图片所在文件夹"
   if (props.item.imagePath) {
-    options.push({ label: '打开图片所在文件夹', key: 'openFolder', icon: () => h(NIcon, { component: FolderOpenIcon, size: 16 }) });
+    options.push({ label: t('contextMenu.openFolder'), key: 'openFolder', icon: () => h(NIcon, { component: FolderOpenIcon, size: 16 }) });
   }
 
   // 内置分类（文本/图像）且非收藏，显示设置过期时间
   if (isBuiltinCategory.value && !isFavorite.value) {
     options.push({
       key: 'expiry',
-      label: '设置过期时间',
+      label: t('contextMenu.setExpiry'),
       icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
       children: [
-        { label: '1小时', key: 'expiry_1h' },
-        { label: '1天', key: 'expiry_1d' },
-        { label: '7天', key: 'expiry_7d' },
-        { label: '30天', key: 'expiry_30d' },
-        { label: '永不过期', key: 'expiry_never' },
+        { label: t('expiry.hour1'), key: 'expiry_1h' },
+        { label: t('expiry.day1'), key: 'expiry_1d' },
+        { label: t('expiry.days7'), key: 'expiry_7d' },
+        { label: t('expiry.days30'), key: 'expiry_30d' },
+        { label: t('expiry.never'), key: 'expiry_never' },
       ],
     });
   }
@@ -142,15 +151,15 @@ const contextMenuOptions = computed(() => {
     options.push({ type: 'divider', key: 'd2' });
     options.push({
       key: 'move',
-      label: '移动到分类',
+      label: t('contextMenu.moveToCategory'),
       icon: () => h(NIcon, { component: FolderIcon, size: 16 }),
       children: categoryOptions.value,
     });
   }
 
   options.push({ type: 'divider', key: 'd1' });
-  options.push({ label: '进入选择模式', key: 'enter_select', icon: () => h(NIcon, { component: SelectIcon, size: 16 }) });
-  options.push({ label: '删除', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
+  options.push({ label: t('contextMenu.enterSelectMode'), key: 'enter_select', icon: () => h(NIcon, { component: SelectIcon, size: 16 }) });
+  options.push({ label: t('contextMenu.delete'), key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
   return options;
 });
 
@@ -164,11 +173,11 @@ async function copyContent() {
         const base64 = await invoke<string>('read_clipboard_image_file', { path: props.item.imagePath });
         const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
         await invoke('write_image_to_clipboard', { base64: base64Data });
-        message.success('已复制图片');
+        message.success(t('messages.imageCopied'));
       } catch (e) {
         // 文件读取失败，说明文件已被删除
         console.error('图片文件读取失败:', e);
-        message.warning('图片文件已被删除，卡片已自动清理');
+        message.warning(t('messages.imageNotFound'));
         emit('delete', props.item.id);
         return;
       }
@@ -176,10 +185,10 @@ async function copyContent() {
       const { invoke } = await import('@tauri-apps/api/core');
       const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
       await invoke('write_image_to_clipboard', { base64: base64Data });
-      message.success('已复制图片');
+      message.success(t('messages.imageCopied'));
     } else if (props.item.content) {
       await navigator.clipboard.writeText(props.item.content);
-      message.success('已复制');
+      message.success(t('messages.copied'));
     }
   } catch (e) {
     // 其他复制失败情况
@@ -193,11 +202,11 @@ async function copyContent() {
       const ok = document.execCommand('copy');
       document.body.removeChild(ta);
       if (ok) {
-        message.success('已复制');
+        message.success(t('messages.copied'));
         return;
       }
     }
-    message.error('复制失败');
+    message.error(t('messages.copyFailed'));
     console.error('复制失败:', e);
   }
 }
@@ -205,11 +214,11 @@ async function copyContent() {
 async function handleFavorite() {
   const result = await clipboardStore.favoriteItem(props.item);
   if (result === 'favorited') {
-    message.success('已收藏');
+    message.success(t('messages.favorited'));
   } else if (result === 'unfavorited') {
-    message.success('已取消收藏');
+    message.success(t('messages.unfavorited'));
   } else {
-    message.error('收藏分类不存在，请刷新后重试');
+    message.error(t('messages.favoriteCategoryNotFound'));
   }
 }
 
@@ -231,16 +240,16 @@ function handleContextMenu(e: MouseEvent) {
 function setExpiry(key: string) {
   const now = Date.now();
   let expiresAt: number | null = null;
+  let labelKey = '';
   switch (key) {
-    case 'expiry_1h': expiresAt = now + 1 * 60 * 60 * 1000; break;
-    case 'expiry_1d': expiresAt = now + 1 * 24 * 60 * 60 * 1000; break;
-    case 'expiry_7d': expiresAt = now + 7 * 24 * 60 * 60 * 1000; break;
-    case 'expiry_30d': expiresAt = now + 30 * 24 * 60 * 60 * 1000; break;
-    case 'expiry_never': expiresAt = null; break;
+    case 'expiry_1h': expiresAt = now + 1 * 60 * 60 * 1000; labelKey = 'expiry.hour1'; break;
+    case 'expiry_1d': expiresAt = now + 1 * 24 * 60 * 60 * 1000; labelKey = 'expiry.day1'; break;
+    case 'expiry_7d': expiresAt = now + 7 * 24 * 60 * 60 * 1000; labelKey = 'expiry.days7'; break;
+    case 'expiry_30d': expiresAt = now + 30 * 24 * 60 * 60 * 1000; labelKey = 'expiry.days30'; break;
+    case 'expiry_never': expiresAt = null; labelKey = 'expiry.never'; break;
   }
   clipboardStore.setItemExpiry(props.item.id, expiresAt);
-  const label = { expiry_1h: '1小时', expiry_1d: '1天', expiry_7d: '7天', expiry_30d: '30天', expiry_never: '永不过期' }[key];
-  message.success(`已设置：${label}`);
+  message.success(t('messages.expirySet', { label: t(labelKey) }));
 }
 
 function handleMenuSelect(key: string) {
@@ -254,7 +263,7 @@ function handleMenuSelect(key: string) {
   if (key.startsWith('move_')) {
     const catId = key.slice(5);
     emit('move-to-category', props.item, catId);
-    message.success('已移动');
+    message.success(t('messages.moved'));
   }
   if (key.startsWith('expiry_')) setExpiry(key);
 }
@@ -273,10 +282,10 @@ async function openImageFolder() {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('reveal_file_in_folder', { path: props.item.imagePath });
-    message.success('已打开文件夹');
+    message.success(t('messages.folderOpened'));
   } catch (e) {
     console.error('打开文件夹失败:', e);
-    message.error('打开文件夹失败');
+    message.error(t('messages.openFolderFailed'));
   }
 }
 
@@ -293,7 +302,7 @@ function saveEdit() {
   };
   clipboardStore.updateItem(updated);
   isEditing.value = false;
-  message.success('已保存');
+  message.success(t('messages.saved'));
 }
 
 function cancelEdit() {
@@ -321,9 +330,9 @@ async function handleCrossAppDragStart(e: DragEvent) {
     try {
       const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
       await invoke('write_image_to_clipboard', { base64: base64Data });
-      message.info('图片已复制到剪贴板，请在目标窗口 Ctrl+V 粘贴');
+      message.info(t('messages.imageCopiedToClipboard'));
     } catch {
-      message.error('图片复制失败');
+      message.error(t('messages.copyFailed'));
     }
   } else {
     // 文本
@@ -359,7 +368,7 @@ function handleCrossAppDragEnd(_e: DragEvent) {
       @dragstart="handleCrossAppDragStart"
       @dragend="handleCrossAppDragEnd"
       :class="{ 'is-dragging': isCrossDragging }"
-      title="拖拽到其它应用"
+      :title="t('drag.crossAppDrag')"
     >
       <NIcon :component="DragIcon" size="18" />
     </div>
@@ -392,8 +401,8 @@ function handleCrossAppDragEnd(_e: DragEvent) {
             class="edit-content-input"
           />
           <div class="edit-actions">
-            <button class="edit-btn save" @click="saveEdit">保存</button>
-            <button class="edit-btn cancel" @click="cancelEdit">取消</button>
+            <button class="edit-btn save" @click="saveEdit">{{ t('messages.save') }}</button>
+            <button class="edit-btn cancel" @click="cancelEdit">{{ t('messages.cancel') }}</button>
           </div>
         </div>
         <!-- 正常显示 -->

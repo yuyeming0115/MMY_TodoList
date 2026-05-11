@@ -4,12 +4,14 @@ import { NDropdown, NIcon, NInput, NPopconfirm, useMessage } from 'naive-ui';
 import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
+import { useI18n } from '../composables/useI18n';
 import ClipboardItemCard from './ClipboardItemCard.vue';
 import type { ClipboardItem } from '../types';
 import { BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 
 const clipboardStore = useClipboardStore();
 const message = useMessage();
+const { t } = useI18n();
 
 const props = defineProps<{
   compact?: boolean;
@@ -93,7 +95,7 @@ async function deleteSelected() {
   const ids = [...selectedIds.value];
   if (ids.length === 0) return;
   await clipboardStore.removeItems(ids);
-  message.success(`已删除 ${ids.length} 项`);
+  message.success(t('messages.deleteSelected', { count: ids.length }));
   selectedIds.value = new Set();
   // 删除后自动退出选择模式
   selectMode.value = false;
@@ -177,9 +179,9 @@ const editContent = ref('');
 async function cleanupExpired() {
   const count = await clipboardStore.cleanupExpiredItems();
   if (count > 0) {
-    message.success(`已清理 ${count} 个过期项目`);
+    message.success(t('messages.cleanupDone', { count }));
   } else {
-    message.info('没有已过期项目');
+    message.info(t('messages.noExpiredItems'));
   }
 }
 
@@ -212,19 +214,19 @@ async function handleContextMenuSelect(key: string) {
       const { invoke } = await import('@tauri-apps/api/core');
       const base64Data = item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
       await invoke('write_image_to_clipboard', { base64: base64Data });
-      message.success('已复制图片');
+      message.success(t('messages.imageCopied'));
     } else {
       await navigator.clipboard.writeText(item.content);
-      message.success('已复制');
+      message.success(t('messages.copied'));
     }
   } else if (key === 'favorite') {
     const result = await clipboardStore.favoriteItem(item);
     if (result === 'favorited') {
-      message.success('已收藏');
+      message.success(t('messages.favorited'));
     } else if (result === 'unfavorited') {
-      message.success('已取消收藏');
+      message.success(t('messages.unfavorited'));
     } else {
-      message.error('收藏分类不存在');
+      message.error(t('messages.favoriteCategoryNotFound'));
     }
   } else if (key === 'edit') {
     isEditing.value = true;
@@ -245,7 +247,7 @@ function saveEdit() {
   };
   clipboardStore.updateItem(updated);
   isEditing.value = false;
-  message.success('已保存');
+  message.success(t('messages.saved'));
 }
 
 function cancelEdit() {
@@ -259,29 +261,29 @@ function cancelEdit() {
   <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" :style="stackStyle" @contextmenu="handleListContextMenu">
     <!-- 选择工具栏 -->
     <div v-if="selectMode || selectedIds.size > 0" class="selection-toolbar">
-      <span class="selection-count">已选 {{ selectedIds.size }} / {{ filteredItems.length }}</span>
-      <button class="toolbar-btn" @click="selectAll" :disabled="selectedIds.size === filteredItems.length" title="全选">
+      <span class="selection-count">{{ t('messages.selected', { count: selectedIds.size, total: filteredItems.length }) }}</span>
+      <button class="toolbar-btn" @click="selectAll" :disabled="selectedIds.size === filteredItems.length" :title="t('messages.selectAll')">
         <NIcon :component="CheckAllIcon" size="16" />
-        全选
+        {{ t('messages.selectAll') }}
       </button>
       <NPopconfirm @positive-click="deleteSelected">
         <template #trigger>
-          <button class="toolbar-btn danger" :disabled="selectedIds.size === 0" title="删除选中">
+          <button class="toolbar-btn danger" :disabled="selectedIds.size === 0" :title="t('messages.deleteSelectedBtn')">
             <NIcon :component="DeleteIcon" size="16" />
-            删除选中
+            {{ t('messages.deleteSelectedBtn') }}
           </button>
         </template>
-        确定删除选中的 {{ selectedIds.size }} 项吗？
+        {{ t('messages.confirmDeleteSelected', { count: selectedIds.size }) }}
       </NPopconfirm>
-      <button class="toolbar-btn" @click="toggleSelectMode" title="退出选择模式">
+      <button class="toolbar-btn" @click="toggleSelectMode" :title="t('messages.exitSelectMode')">
         <NIcon :component="CloseIcon" size="14" />
-        退出
+        {{ t('messages.exitSelectMode') }}
       </button>
     </div>
 
     <div v-if="filteredItems.length === 0" class="empty">
-      暂无剪贴板记录
-      <button class="cleanup-btn" @click="cleanupExpired">清理已过期项目</button>
+      {{ t('empty.noClipboard') }}
+      <button class="cleanup-btn" @click="cleanupExpired">{{ t('contextMenu.cleanupExpired') }}</button>
     </div>
     <draggable
       v-else
@@ -327,13 +329,13 @@ function cancelEdit() {
       :y="contextMenuY"
       :show="contextMenuShow"
       :options="[
-        { label: '复制内容', key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 14 }) },
-        { label: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? '取消收藏' : '收藏', key: 'favorite', icon: () => h(NIcon, { component: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? StarFilledIcon : StarIcon, size: 14, style: { color: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? '#F39C12' : '#333' } }) },
+        { label: t('contextMenu.copy'), key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 14 }) },
+        { label: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? t('contextMenu.unfavorite') : t('contextMenu.favorite'), key: 'favorite', icon: () => h(NIcon, { component: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? StarFilledIcon : StarIcon, size: 14, style: { color: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? '#F39C12' : '#333' } }) },
         ...(contextMenuItem && !contextMenuItem.imageBase64 ? [
-          { label: '编辑', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
+          { label: t('contextMenu.edit'), key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
         ] : []),
         { type: 'divider', key: 'd1' },
-        { label: '删除', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 14, style: { color: '#E05252' } }) }
+        { label: t('contextMenu.delete'), key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 14, style: { color: '#E05252' } }) }
       ]"
       @select="handleContextMenuSelect"
       @clickoutside="contextMenuShow = false"
@@ -353,11 +355,11 @@ function cancelEdit() {
     >
       <template #default>
         <div class="edit-popup" @click.stop>
-          <NInput v-model:value="editTitle" size="small" placeholder="标题" class="edit-title-input" @keyup.enter="saveEdit" />
-          <NInput v-model:value="editContent" type="textarea" size="small" placeholder="内容" :autosize="{ minRows: 2, maxRows: 6 }" class="edit-content-input" />
+          <NInput v-model:value="editTitle" size="small" placeholder="Title" class="edit-title-input" @keyup.enter="saveEdit" />
+          <NInput v-model:value="editContent" type="textarea" size="small" placeholder="Content" :autosize="{ minRows: 2, maxRows: 6 }" class="edit-content-input" />
           <div class="edit-actions">
-            <button class="edit-btn save" @click="saveEdit">保存</button>
-            <button class="edit-btn cancel" @click="cancelEdit">取消</button>
+            <button class="edit-btn save" @click="saveEdit">{{ t('messages.save') }}</button>
+            <button class="edit-btn cancel" @click="cancelEdit">{{ t('messages.cancel') }}</button>
           </div>
         </div>
       </template>
@@ -371,7 +373,7 @@ function cancelEdit() {
       :y="listMenuY"
       :show="listMenuShow"
       :options="[
-        { label: '清理已过期项目', key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 14 }) }
+        { label: t('contextMenu.cleanupExpired'), key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 14 }) }
       ]"
       @select="handleListMenuSelect"
       @clickoutside="listMenuShow = false"

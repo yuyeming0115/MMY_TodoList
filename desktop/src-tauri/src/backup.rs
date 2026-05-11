@@ -12,6 +12,7 @@ use std::io;
 
 /// 备份设置
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackupSettings {
     /// 启用每日备份
     pub backup_daily: bool,
@@ -36,6 +37,7 @@ impl Default for BackupSettings {
 
 /// 备份文件信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackupInfo {
     pub filename: String,
     pub created_at: i64,
@@ -144,8 +146,10 @@ impl BackupManager {
         Some(filename)
     }
 
-    /// 清理超过保留天数的备份
+    /// 清理超过保留天数的备份，并确保最多只保留7个
     fn cleanup_old_backups(&self) {
+        const MAX_BACKUPS: usize = 7;
+
         let retention_days = self.settings.lock().unwrap().retention_days;
         let retention_ms = (retention_days as i64) * 24 * 60 * 60 * 1000;
         let now = std::time::SystemTime::now()
@@ -153,26 +157,47 @@ impl BackupManager {
             .unwrap()
             .as_millis() as i64;
 
+        // 收集所有备份文件及其时间
+        let mut backups: Vec<(PathBuf, i64)> = Vec::new();
+
         if let Ok(entries) = fs::read_dir(&self.backup_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().map(|e| e == "mmytodo").unwrap_or(false) {
-                    // 从文件名解析时间
                     let filename = path.file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("");
 
-                    // 格式: backup_YYYYMMDD_HHMMSS.mmytodo
                     if filename.starts_with("backup_") {
-                        let timestamp_str = &filename[7..filename.len() - 7]; // 去掉 "backup_" 和 ".mmytodo"
-                        // 解析 YYYYMMDD_HHMMSS
+                        let timestamp_str = &filename[7..filename.len() - 7];
                         if let Some(backup_time) = Self::parse_backup_time(timestamp_str) {
-                            if now - backup_time > retention_ms {
-                                fs::remove_file(&path).ok();
-                            }
+                            backups.push((path, backup_time));
                         }
                     }
                 }
+            }
+        }
+
+        // 按时间倒序排序（最新的在前）
+        backups.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // 先删除过期的备份
+        for (path, time) in backups.iter() {
+            if now - *time > retention_ms {
+                fs::remove_file(path).ok();
+            }
+        }
+
+        // 更新列表（移除已删除的）
+        let remaining: Vec<_> = backups
+            .iter()
+            .filter(|(path, _)| path.exists())
+            .collect();
+
+        // 如果超过7个，删除最旧的
+        if remaining.len() > MAX_BACKUPS {
+            for (path, _) in remaining.iter().skip(MAX_BACKUPS) {
+                fs::remove_file(path).ok();
             }
         }
     }
