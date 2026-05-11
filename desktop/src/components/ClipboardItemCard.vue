@@ -403,6 +403,9 @@ function handleCrossAppDragEnd(_e: DragEvent) {
       </div>
     </div>
 
+    <!-- 收藏角标 -->
+    <div v-if="isFavorite" class="favorite-badge">🔒</div>
+
     <!-- 过期时间提示 -->
     <div v-if="expiryLabel" class="expiry-badge" :class="{ warning: isExpiringSoon }">
       <NIcon :component="TimeIcon" size="10" />
@@ -569,12 +572,15 @@ html.dark .task-card:hover .task-desc {
 
 .task-thumbnail {
   max-width: 200px;
+  max-height: 120px;
   border-radius: 8px;
   overflow: hidden;
 }
 
 .task-thumbnail img {
   width: 100%;
+  height: 100%;
+  object-fit: cover;
   display: block;
 }
 
@@ -728,11 +734,12 @@ html.dark .task-card.selected {
   background: rgba(74, 144, 217, 0.1);
 }
 
-/* 跨应用拖拽手柄 */
+/* 跨应用拖拽手柄 - 右侧中间 */
 .cross-app-drag-handle {
   position: absolute;
-  top: 8px;
+  top: 50%;
   right: 8px;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -766,5 +773,15 @@ html.dark .cross-app-drag-handle:hover {
   opacity: 1;
   background: rgba(74, 144, 217, 0.2);
   color: #4A90D9;
+}
+
+/* 收藏角标 */
+.favorite-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 14px;
+  z-index: 6;
+  pointer-events: none;
 }
 </style>
