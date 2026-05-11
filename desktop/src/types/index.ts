@@ -37,6 +37,7 @@ export interface AppSettings {
   fontFamily: string;
   clipboardViewMode: 'normal' | 'stacked';
   clipboardStackGap: number; // 层叠模式卡片间距（px）
+  taskViewMode: 'normal' | 'stacked'; // 任务视图模式
 }
 
 export interface ExportData {
@@ -98,7 +99,6 @@ export const FREE_TASK_PER_CATEGORY_LIMIT = 50;
 
 // 备份设置
 export interface BackupSettings {
-  backupDaily: boolean;
   backupOnClose: boolean;
   backupHourly: boolean;
   retentionDays: number;

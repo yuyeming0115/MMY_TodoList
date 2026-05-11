@@ -1,6 +1,6 @@
 [package]
 name = "mmy_todo_lib"
-version = "1.0.0"
+version = "1.8.0"
 description = "MMY TodoList Desktop App"
 authors = ["MMY-Tools"]
 edition = "2021"

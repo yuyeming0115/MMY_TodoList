@@ -14,8 +14,6 @@ use std::io;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupSettings {
-    /// 启用每日备份
-    pub backup_daily: bool,
     /// 启用关闭时备份
     pub backup_on_close: bool,
     /// 启用每小时备份
@@ -27,7 +25,6 @@ pub struct BackupSettings {
 impl Default for BackupSettings {
     fn default() -> Self {
         Self {
-            backup_daily: true,
             backup_on_close: true,
             backup_hourly: false,
             retention_days: 7,
@@ -321,7 +318,6 @@ impl BackupManager {
         let db = self.db.clone();
 
         std::thread::spawn(move || {
-            let mut last_daily_backup: i64 = 0;
             let mut last_hourly_backup: i64 = 0;
 
             loop {
@@ -336,22 +332,6 @@ impl BackupManager {
                 if settings.backup_hourly && now - last_hourly_backup >= 3600000 {
                     last_hourly_backup = now;
                     Self::do_backup(&backup_dir, &db);
-                }
-
-                // 每日备份（凌晨2点执行）
-                if settings.backup_daily {
-                    let now_dt = chrono::DateTime::from_timestamp_millis(now)
-                        .unwrap_or_else(|| Utc::now());
-                    let today_2am = now_dt.date_naive()
-                        .and_hms_opt(2, 0, 0)
-                        .unwrap()
-                        .and_utc()
-                        .timestamp_millis();
-
-                    if now >= today_2am && last_daily_backup < today_2am {
-                        last_daily_backup = now;
-                        Self::do_backup(&backup_dir, &db);
-                    }
                 }
             }
         });

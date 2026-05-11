@@ -61,7 +61,6 @@ export default {
     launchAtStartup: '开机启动',
     // 自动备份
     autoBackup: '自动备份',
-    backupDaily: '每日备份',
     backupOnClose: '关闭时备份',
     backupHourly: '每小时备份',
     retentionDays: '保留天数',

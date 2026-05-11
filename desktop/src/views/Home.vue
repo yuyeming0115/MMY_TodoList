@@ -412,10 +412,10 @@ function toggleClipboardView() {
 }
 
 // 任务视图切换
-const taskViewMode = ref<'normal' | 'stacked'>('normal');
+const taskViewMode = computed(() => settingsStore.settings.taskViewMode);
 
 function toggleTaskView() {
-  taskViewMode.value = taskViewMode.value === 'normal' ? 'stacked' : 'normal';
+  settingsStore.setTaskViewMode(taskViewMode.value === 'normal' ? 'stacked' : 'normal');
 }
 
 // 计算层叠样式（响应式更新）

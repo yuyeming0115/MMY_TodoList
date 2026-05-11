@@ -13,6 +13,7 @@ export const useSettingsStore = defineStore('settings', () => {
     fontFamily: '',
     clipboardViewMode: 'normal',
     clipboardStackGap: 64,
+    taskViewMode: 'normal',
   });
 
   async function load() {
@@ -64,6 +65,10 @@ export const useSettingsStore = defineStore('settings', () => {
     update({ clipboardStackGap: gap });
   }
 
+  function setTaskViewMode(mode: 'normal' | 'stacked') {
+    update({ taskViewMode: mode });
+  }
+
   return {
     settings,
     load,
@@ -78,5 +83,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setFontFamily,
     setClipboardViewMode,
     setClipboardStackGap,
+    setTaskViewMode,
   };
 });

@@ -34,7 +34,6 @@ const fontOptions = computed(() => [
 
 // 备份设置
 const backupSettings = ref<BackupSettings>({
-  backupDaily: true,
   backupOnClose: true,
   backupHourly: false,
   retentionDays: 7,
@@ -221,15 +220,8 @@ function goBack() {
       <div class="backup-section">
         <NText depth="2" style="font-weight: 500">{{ t('settings.autoBackup') }}</NText>
 
-        <!-- 三个备份开关一行 -->
+        <!-- 两个备份开关一行 -->
         <div class="settings-row backup-switches">
-          <div class="setting-item">
-            <span class="setting-label">{{ t('settings.backupDaily') }}</span>
-            <NSwitch
-              :value="backupSettings.backupDaily"
-              @update:value="(v: boolean) => updateBackup('backupDaily', v)"
-            />
-          </div>
           <div class="setting-item">
             <span class="setting-label">{{ t('settings.backupOnClose') }}</span>
             <NSwitch

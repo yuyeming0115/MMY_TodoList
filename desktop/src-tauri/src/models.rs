@@ -86,6 +86,7 @@ pub struct AppSettings {
     pub font_family: String,
     pub clipboard_view_mode: String,
     pub clipboard_stack_gap: i32, // 层叠模式卡片间距（px）
+    pub task_view_mode: String,  // 任务视图模式
 }
 
 impl Default for AppSettings {
@@ -103,6 +104,7 @@ impl Default for AppSettings {
             font_family: String::new(),
             clipboard_view_mode: "normal".to_string(),
             clipboard_stack_gap: 64,
+            task_view_mode: "normal".to_string(),
         }
     }
 }
