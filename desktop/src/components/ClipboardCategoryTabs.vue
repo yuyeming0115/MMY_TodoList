@@ -146,11 +146,28 @@ async function quickAddCategory() {
   store.selectCategory(cat.id);
 }
 
-// 鼠标滚轮横向滚动
+// 鼠标滚轮切换分类
 function handleWheel(e: WheelEvent) {
-  if (tabsRef.value) {
-    e.preventDefault();
-    tabsRef.value.scrollLeft += e.deltaY * 2;
+  if (isDragging.value) return;
+
+  // 获取所有分类 ID（包含 null 代表全部）
+  const allIds: (string | null)[] = [null, ...builtinList.value.map(c => c.id), ...customList.value.map(c => c.id)];
+
+  // 找到当前选中的索引
+  const currentIndex = allIds.indexOf(store.selectedCategoryId);
+  if (currentIndex === -1) return;
+
+  // 向上滚动 = 下一个分类，向下滚动 = 上一个分类
+  let newIndex = currentIndex;
+  if (e.deltaY < 0) {
+    newIndex = Math.min(currentIndex + 1, allIds.length - 1);
+  } else {
+    newIndex = Math.max(currentIndex - 1, 0);
+  }
+
+  // 切换到新分类
+  if (newIndex !== currentIndex) {
+    store.selectCategory(allIds[newIndex]);
   }
 }
 

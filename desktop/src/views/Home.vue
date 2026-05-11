@@ -76,7 +76,7 @@ const settingsStore = useSettingsStore();
 const clipboardStore = useClipboardStore();
 const appWindow = getCurrentWindow();
 const message = useMessage();
-const { t, isEnglish } = useI18n();
+const { t } = useI18n();
 
 // 窗口置顶状态
 const isPinned = ref(false);
