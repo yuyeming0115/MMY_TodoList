@@ -284,19 +284,19 @@ impl BackupManager {
             conn.execute("DELETE FROM clipboard_items", []).ok();
         }
 
-        // 导入分类
+        // 导入分类（使用原有 ID）
         for category in &data.categories {
-            self.db.add_category(category.name.clone(), category.color.clone()).ok();
+            self.db.import_category(category).ok();
         }
 
-        // 导入任务
+        // 导入任务（使用原有 ID 和 sort_order）
         for task in &data.tasks {
-            self.db.add_task(task).ok();
+            self.db.import_task(task).ok();
         }
 
-        // 导入剪贴板分类
+        // 导入剪贴板分类（使用原有 ID）
         for category in &data.clipboard_categories {
-            self.db.add_clipboard_category(category.name.clone(), category.color.clone()).ok();
+            self.db.import_clipboard_category(category).ok();
         }
 
         // 导入剪贴板项目（恢复图片文件）

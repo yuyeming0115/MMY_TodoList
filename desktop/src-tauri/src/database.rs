@@ -294,6 +294,16 @@ impl Database {
         Ok(category)
     }
 
+    /// 导入分类（使用原有 ID，用于备份恢复）
+    pub fn import_category(&self, category: &Category) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO categories (id, name, color, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            [&category.id, &category.name, &category.color, &category.sort_order.to_string(), &category.created_at.to_string()],
+        )?;
+        Ok(())
+    }
+
     pub fn update_category(&self, category: &Category) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -394,6 +404,32 @@ impl Database {
                 &task.priority,
                 &task.status,
                 max_order + 1,
+                if task.is_pinned { 1 } else { 0 },
+                &task.thumbnail_base64,
+                &task.created_at,
+                &task.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 导入任务（保留原有字段，用于备份恢复）
+    pub fn import_task(&self, task: &Task) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO tasks (id, category_id, title, description, start_date, due_date,
+                               priority, status, sort_order, is_pinned, thumbnail_base64, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                &task.id,
+                &task.category_id,
+                &task.title,
+                &task.description,
+                &task.start_date,
+                &task.due_date,
+                &task.priority,
+                &task.status,
+                &task.sort_order,
                 if task.is_pinned { 1 } else { 0 },
                 &task.thumbnail_base64,
                 &task.created_at,
@@ -543,6 +579,16 @@ impl Database {
         Ok(category)
     }
 
+    /// 导入剪贴板分类（使用原有 ID，用于备份恢复）
+    pub fn import_clipboard_category(&self, category: &ClipboardCategory) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            [&category.id, &category.name, &category.color, &category.sort_order.to_string(), &category.created_at.to_string()],
+        )?;
+        Ok(())
+    }
+
     pub fn update_clipboard_category(&self, category: &ClipboardCategory) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -603,7 +649,7 @@ impl Database {
     pub fn add_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT OR REPLACE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 &item.id,
                 &item.category_id,
