@@ -457,3 +457,52 @@ pub fn restore_backup(backup_mgr: State<'_, Arc<BackupManager>>, filename: Strin
 pub fn delete_backup(backup_mgr: State<'_, Arc<BackupManager>>, filename: String) -> Result<(), String> {
     backup_mgr.delete_backup(&filename).map_err(|e| e.to_string())
 }
+
+/// 更新全局快捷键设置并动态注册
+#[tauri::command]
+pub fn update_global_shortcut(
+    app: tauri::AppHandle,
+    db: State<'_, Arc<Database>>,
+    shortcut: Option<String>,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutEvent};
+    use tauri::Manager;
+
+    // 更新数据库
+    let settings = db.get_settings().map_err(|e| e.to_string())?;
+    let old_shortcut = settings.global_shortcut.clone();
+    let mut new_settings = settings;
+    new_settings.global_shortcut = shortcut.clone();
+    db.update_settings(&new_settings).map_err(|e| e.to_string())?;
+
+    // 先注销旧的（如果有）
+    if let Some(old) = &old_shortcut {
+        if !old.is_empty() {
+            app.global_shortcut().unregister(old.as_str()).ok();
+        }
+    }
+
+    // 如果有新快捷键，注册并设置处理器
+    // 注意：on_shortcut 会同时注册快捷键和设置处理器
+    if let Some(s) = &shortcut {
+        if !s.is_empty() {
+            app.global_shortcut().on_shortcut(s.as_str(), |app, _sc, event: ShortcutEvent| {
+                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    if let Some(win) = app.get_webview_window("main") {
+                        if win.is_minimized().unwrap_or(false) {
+                            win.unminimize().unwrap();
+                            win.set_focus().unwrap();
+                        } else if win.is_visible().unwrap_or(false) {
+                            win.hide().unwrap();
+                        } else {
+                            win.show().unwrap();
+                            win.set_focus().unwrap();
+                        }
+                    }
+                }
+            }).map_err(|e| format!("快捷键注册失败: {}", e))?;
+        }
+    }
+
+    Ok(())
+}

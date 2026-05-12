@@ -23,6 +23,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .on_menu_event(|app, event| {
             if event.id == "show" {
                 if let Some(win) = app.get_webview_window("main") {
@@ -57,8 +58,11 @@ pub fn run() {
             // 启动剪贴板后台监控
             let monitor = ClipboardMonitor::new();
             let monitor_ref = &monitor;
-            monitor_ref.start(app.handle().clone(), db_arc);
+            monitor_ref.start(app.handle().clone(), db_arc.clone());
             app.manage(monitor);
+
+            // 初始化全局快捷键（从设置读取）
+            init_global_shortcut(app, db_arc)?;
 
             // 初始化系统托盘
             setup_tray(app)?;
@@ -147,6 +151,8 @@ pub fn run() {
             launch_pixpin,
             read_clipboard_image,
             write_image_to_clipboard,
+            // 快捷键命令
+            commands::update_global_shortcut,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -450,6 +456,49 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let _tray = app.tray_by_id("main")
         .expect("tray not found")
         .set_menu(Some(menu))?;
+
+    Ok(())
+}
+
+/// 初始化全局快捷键
+fn init_global_shortcut(app: &tauri::App, db: Arc<Database>) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutEvent};
+    use tauri::Manager;
+
+    // 从数据库读取快捷键设置
+    let settings = db.get_settings()?;
+    let shortcut_str = settings.global_shortcut.clone();
+
+    if let Some(shortcut) = &shortcut_str {
+        if !shortcut.is_empty() {
+            // 注册快捷键并设置处理器
+            let register_result = app.global_shortcut().on_shortcut(shortcut.as_str(), |app, _sc, event: ShortcutEvent| {
+                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    if let Some(win) = app.get_webview_window("main") {
+                        if win.is_minimized().unwrap_or(false) {
+                            win.unminimize().unwrap();
+                            win.set_focus().unwrap();
+                        } else if win.is_visible().unwrap_or(false) {
+                            win.hide().unwrap();
+                        } else {
+                            win.show().unwrap();
+                            win.set_focus().unwrap();
+                        }
+                    }
+                }
+            });
+
+            if let Err(e) = register_result {
+                eprintln!("[快捷键] 注册失败: {}，可能被其他应用占用，请在设置中更换", e);
+                // 清除无效的快捷键设置
+                let mut new_settings = settings;
+                new_settings.global_shortcut = None;
+                if let Err(e) = db.update_settings(&new_settings) {
+                    eprintln!("[快捷键] 清除设置失败: {}", e);
+                }
+            }
+        }
+    }
 
     Ok(())
 }
