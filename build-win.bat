@@ -66,7 +66,7 @@ set "RELEASE_DIR=%~dp0desktop\src-tauri\target\release"
 set "OUT_DIR=%~dp0dist"
 if not exist "%OUT_DIR%" mkdir "%OUT_DIR%"
 
-copy "%RELEASE_DIR%\mmy_todo_lib.exe" "%OUT_DIR%\MMY TodoList Portable.exe"
+copy "%RELEASE_DIR%\mmy_todo_app.exe" "%OUT_DIR%\MMY TodoList Portable.exe"
 echo       Saved: MMY TodoList Portable.exe
 echo.
 
