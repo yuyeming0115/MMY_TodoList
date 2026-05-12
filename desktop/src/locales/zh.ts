@@ -146,6 +146,8 @@ export default {
     deleteSelectedBtn: '删除选中',
     exitSelectMode: '退出',
     confirmDeleteSelected: '确定删除选中的 {count} 项吗？',
+    favoriteCannotSelect: '收藏卡不能被选中删除',
+    favoriteExcludedFromSelect: '已排除 {count} 个收藏卡',
   },
   // 分类相关
   category: {

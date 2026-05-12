@@ -46,10 +46,17 @@ function toggleSelectMode() {
   }
 }
 
-// 切换单个选中
+// 切换单个选中（收藏卡不允许选中）
 function toggleSelect(id: string, isShift: boolean) {
+  // 检查是否是收藏卡
+  const item = filteredItems.value.find(i => i.id === id);
+  if (item && item.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE) {
+    message.warning(t('messages.favoriteCannotSelect'));
+    return;
+  }
+
   if (isShift && selectionAnchor.value) {
-    // Shift 连选：选中锚点到当前之间的所有项目
+    // Shift 连选：选中锚点到当前之间的所有项目（排除收藏卡）
     const ids = filteredItems.value.map(i => i.id);
     const anchorIdx = ids.indexOf(selectionAnchor.value);
     const currIdx = ids.indexOf(id);
@@ -57,7 +64,11 @@ function toggleSelect(id: string, isShift: boolean) {
       const start = Math.min(anchorIdx, currIdx);
       const end = Math.max(anchorIdx, currIdx);
       for (let i = start; i <= end; i++) {
-        selectedIds.value.add(ids[i]);
+        const targetItem = filteredItems.value[i];
+        // 连选时也要排除收藏卡
+        if (targetItem.categoryId !== BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE) {
+          selectedIds.value.add(ids[i]);
+        }
       }
     }
   } else {
@@ -83,10 +94,20 @@ function moveToCategory(item: ClipboardItem, categoryId: string) {
   clipboardStore.updateItem(item);
 }
 
-// 全选 / 取消全选
+// 全选 / 取消全选（排除收藏卡）
 function selectAll() {
-  selectedIds.value = new Set(filteredItems.value.map(i => i.id));
+  // 只选中非收藏卡
+  const selectableIds = filteredItems.value
+    .filter(i => i.categoryId !== BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE)
+    .map(i => i.id);
+  selectedIds.value = new Set(selectableIds);
   if (!selectMode.value) selectMode.value = true;
+
+  // 如果有收藏卡被排除，显示提示
+  const favoriteCount = filteredItems.value.filter(i => i.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE).length;
+  if (favoriteCount > 0) {
+    message.info(t('messages.favoriteExcludedFromSelect', { count: favoriteCount }));
+  }
 }
 
 // 批量删除

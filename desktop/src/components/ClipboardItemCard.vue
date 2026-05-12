@@ -225,6 +225,11 @@ async function handleFavorite() {
 }
 
 function handleClick(e: MouseEvent) {
+  // 收藏卡在选择模式下不触发选中，直接复制
+  if (isFavorite.value && props.showCheckbox) {
+    copyContent();
+    return;
+  }
   if (props.showCheckbox || e.ctrlKey || e.metaKey || e.shiftKey) {
     emit('toggle-select', props.item.id, e.shiftKey);
     return;
@@ -367,7 +372,7 @@ function handleCrossAppDragEnd(_e: DragEvent) {
     @select="handleMenuSelect"
     @clickoutside="showContextMenu = false"
   />
-  <div class="task-card" :class="{ compact: props.compact, expiring: isExpiringSoon, stacked: props.stacked, selected: props.selected }" @click="handleClick" @contextmenu="handleContextMenu">
+  <div class="task-card" :class="{ compact: props.compact, expiring: isExpiringSoon, stacked: props.stacked, selected: props.selected, selectMode: props.showCheckbox, favoriteLocked: isFavorite && props.showCheckbox }" @click="handleClick" @contextmenu="handleContextMenu">
     <label v-if="props.showCheckbox" class="checkbox-overlay" @click.stop="emit('toggle-select', props.item.id, false)">
       <input type="checkbox" :checked="props.selected" />
       <span class="checkmark"></span>
@@ -694,13 +699,19 @@ html.dark .expiry-badge.warning {
 /* 复选框覆盖层 */
 .checkbox-overlay {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 50%;
+  left: 6px;
+  transform: translateY(-50%);
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+/* 选择模式下卡片左侧留出空间 */
+.task-card.selectMode {
+  padding-left: 32px;
 }
 
 .checkbox-overlay input[type="checkbox"] {
@@ -803,5 +814,26 @@ html.dark .cross-app-drag-handle:hover {
   font-size: 14px;
   z-index: 6;
   pointer-events: none;
+}
+
+/* 收藏卡在选择模式下的锁定状态 */
+.task-card.favoriteLocked {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-left-color: #F39C12;
+}
+
+.task-card.favoriteLocked:hover {
+  transform: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+html.dark .task-card.favoriteLocked {
+  opacity: 0.5;
+}
+
+/* 收藏卡锁定状态下隐藏复选框 */
+.task-card.favoriteLocked .checkbox-overlay {
+  display: none;
 }
 </style>
