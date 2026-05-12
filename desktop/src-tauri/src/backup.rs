@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 use std::fs;
 use std::io;
+use base64::Engine;
 
 /// 备份设置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,8 +120,20 @@ impl BackupManager {
         let categories = self.db.get_categories().ok()?;
         let tasks = self.db.get_tasks().ok()?;
         let clipboard_categories = self.db.get_clipboard_categories().ok()?;
-        let clipboard_items = self.db.get_clipboard_items().ok()?;
+        let mut clipboard_items = self.db.get_clipboard_items().ok()?;
         let settings = self.db.get_settings().ok()?;
+
+        // 备份图片文件：将 image_path 的图片转成 base64 存入 JSON
+        for item in &mut clipboard_items {
+            if let Some(path) = &item.image_path {
+                // 读取图片文件转成 base64
+                if let Ok(data) = fs::read(path) {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                    item.image_base64 = Some(format!("data:image/png;base64,{}", b64));
+                }
+                // 即使文件不存在，保留原有的 image_base64（如果有）
+            }
+        }
 
         let export_data = ExportData {
             version: "3.0".to_string(),
@@ -286,9 +299,18 @@ impl BackupManager {
             self.db.add_clipboard_category(category.name.clone(), category.color.clone()).ok();
         }
 
-        // 导入剪贴板项目
+        // 导入剪贴板项目（恢复图片文件）
         for item in &data.clipboard_items {
-            self.db.add_clipboard_item(item).ok();
+            let mut item = item.clone();
+            // 如果有 base64 数据，重新保存图片文件
+            if item.image_base64.is_some() {
+                let result = self.db.save_clipboard_image(&item.id, &item.image_base64.clone().unwrap());
+                if let Ok((path, thumb)) = result {
+                    item.image_path = Some(path);
+                    item.thumbnail_base64 = Some(thumb);
+                }
+            }
+            self.db.add_clipboard_item(&item).ok();
         }
 
         // 导入设置
