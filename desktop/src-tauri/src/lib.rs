@@ -460,6 +460,49 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 将窗口移动到鼠标位置附近并显示
+pub(crate) fn show_window_at_cursor(app: &tauri::AppHandle) {
+    use tauri::{Manager, Position, PhysicalPosition};
+
+    if let Some(win) = app.get_webview_window("main") {
+        // 先恢复窗口状态（如果最小化）
+        if win.is_minimized().unwrap_or(false) {
+            win.unminimize().ok();
+        }
+
+        // 获取鼠标位置
+        #[cfg(target_os = "windows")]
+        {
+            use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+            use windows::Win32::Foundation::POINT;
+
+            unsafe {
+                let mut point = POINT { x: 0, y: 0 };
+                if GetCursorPos(&mut point).is_ok() {
+                    // 获取窗口大小
+                    if let Ok(size) = win.outer_size() {
+                        // 计算窗口位置（窗口中心在鼠标位置）
+                        let x = point.x.saturating_sub(size.width as i32 / 2);
+                        let y = point.y.saturating_sub(size.height as i32 / 2);
+
+                        // 设置窗口位置
+                        win.set_position(Position::Physical(PhysicalPosition { x, y })).ok();
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            // 非 Windows 平台暂时不支持跟随鼠标
+            // 未来可以添加 macOS 和 Linux 支持
+        }
+
+        win.show().ok();
+        win.set_focus().ok();
+    }
+}
+
 /// 初始化全局快捷键
 fn init_global_shortcut(app: &tauri::App, db: Arc<Database>) -> Result<(), Box<dyn std::error::Error>> {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutEvent};
@@ -476,13 +519,11 @@ fn init_global_shortcut(app: &tauri::App, db: Arc<Database>) -> Result<(), Box<d
                 if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                     if let Some(win) = app.get_webview_window("main") {
                         if win.is_minimized().unwrap_or(false) {
-                            win.unminimize().unwrap();
-                            win.set_focus().unwrap();
+                            show_window_at_cursor(app);
                         } else if win.is_visible().unwrap_or(false) {
-                            win.hide().unwrap();
+                            win.hide().ok();
                         } else {
-                            win.show().unwrap();
-                            win.set_focus().unwrap();
+                            show_window_at_cursor(app);
                         }
                     }
                 }

@@ -490,13 +490,11 @@ pub fn update_global_shortcut(
                 if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                     if let Some(win) = app.get_webview_window("main") {
                         if win.is_minimized().unwrap_or(false) {
-                            win.unminimize().unwrap();
-                            win.set_focus().unwrap();
+                            crate::show_window_at_cursor(app);
                         } else if win.is_visible().unwrap_or(false) {
-                            win.hide().unwrap();
+                            win.hide().ok();
                         } else {
-                            win.show().unwrap();
-                            win.set_focus().unwrap();
+                            crate::show_window_at_cursor(app);
                         }
                     }
                 }
