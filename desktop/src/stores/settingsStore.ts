@@ -14,6 +14,7 @@ export const useSettingsStore = defineStore('settings', () => {
     clipboardViewMode: 'normal',
     clipboardStackGap: 64,
     taskViewMode: 'normal',
+    globalShortcut: undefined,
   });
 
   async function load() {
@@ -69,6 +70,10 @@ export const useSettingsStore = defineStore('settings', () => {
     update({ taskViewMode: mode });
   }
 
+  function setGlobalShortcut(shortcut: string | undefined) {
+    update({ globalShortcut: shortcut });
+  }
+
   return {
     settings,
     load,
@@ -84,5 +89,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setClipboardViewMode,
     setClipboardStackGap,
     setTaskViewMode,
+    setGlobalShortcut,
   };
 });

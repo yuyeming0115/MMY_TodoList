@@ -38,6 +38,7 @@ export interface AppSettings {
   clipboardViewMode: 'normal' | 'stacked';
   clipboardStackGap: number; // 层叠模式卡片间距（px）
   taskViewMode: 'normal' | 'stacked'; // 任务视图模式
+  globalShortcut?: string; // 全局快捷键（如 "Ctrl+Alt+D")
 }
 
 export interface ExportData {

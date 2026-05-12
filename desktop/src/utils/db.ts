@@ -147,3 +147,8 @@ export async function restoreBackup(filename: string): Promise<void> {
 export async function deleteBackup(filename: string): Promise<void> {
   return invoke('delete_backup', { filename });
 }
+
+// 更新全局快捷键设置
+export async function updateGlobalShortcut(shortcut: string | null): Promise<void> {
+  return invoke('update_global_shortcut', { shortcut });
+}

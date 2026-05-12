@@ -96,6 +96,16 @@ export default {
     exportContent: 'Export includes: task categories, task list, clipboard categories, clipboard items, settings',
     fileFormat: 'File format: .mmytodo (select save path after clicking export)',
     moreBackups: 'more backups...',
+    // 快捷键设置
+    shortcut: 'Shortcut Key',
+    clickToSet: 'Click to set shortcut',
+    pressShortcut: 'Press shortcut combination...',
+    shortcutHint: 'Set a shortcut to quickly show/hide the window (e.g., Ctrl+Alt+D)',
+    shortcutClear: 'Clear shortcut',
+    shortcutConflict: 'Shortcut may conflict with other apps',
+    shortcutRegistered: 'Shortcut registered successfully',
+    shortcutFailed: 'Registration failed, shortcut may be occupied by system or other apps',
+    shortcutHintFull: 'Common unavailable shortcuts: F1 (Help), Alt+F4 (Close), system reserved combos',
   },
   // 消息提示
   messages: {

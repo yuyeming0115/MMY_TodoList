@@ -87,6 +87,7 @@ pub struct AppSettings {
     pub clipboard_view_mode: String,
     pub clipboard_stack_gap: i32, // 层叠模式卡片间距（px）
     pub task_view_mode: String,  // 任务视图模式
+    pub global_shortcut: Option<String>, // 全局快捷键（如 "Ctrl+Alt+D")
 }
 
 impl Default for AppSettings {
@@ -105,6 +106,7 @@ impl Default for AppSettings {
             clipboard_view_mode: "normal".to_string(),
             clipboard_stack_gap: 64,
             task_view_mode: "normal".to_string(),
+            global_shortcut: None,
         }
     }
 }

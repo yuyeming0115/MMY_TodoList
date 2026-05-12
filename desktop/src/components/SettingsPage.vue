@@ -6,12 +6,13 @@ import {
 import {
   DownloadOutline as ExportIcon, CloudUploadOutline as ImportIcon,
   ArrowBackOutline as BackIcon, Star as StarIcon, CloudOutline as BackupIcon,
-  TrashOutline as TrashIcon, RefreshOutline as RestoreIcon, TimeOutline as TimeIcon
+  TrashOutline as TrashIcon, RefreshOutline as RestoreIcon, TimeOutline as TimeIcon,
+  CloseOutline as CloseIcon,
 } from '@vicons/ionicons5';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useI18n } from '../composables/useI18n';
 import { useMessage } from 'naive-ui';
-import { exportData, importData, getBackupSettings, updateBackupSettings, createBackupNow, listBackups, restoreBackup, deleteBackup } from '../utils/db';
+import { exportData, importData, getBackupSettings, updateBackupSettings, createBackupNow, listBackups, restoreBackup, deleteBackup, updateGlobalShortcut } from '../utils/db';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import type { ExportData, BackupSettings, BackupInfo } from '../types';
@@ -52,9 +53,7 @@ async function loadBackupData() {
   }
 }
 
-onMounted(loadBackupData);
-
-// 更新备份设置
+// 开始捕获快捷键
 async function updateBackup(key: keyof BackupSettings, value: boolean | number) {
   (backupSettings.value as any)[key] = value;
   try {
@@ -119,6 +118,110 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// 快捷键设置
+const isCapturing = ref(false);
+const currentShortcut = ref<string | undefined>(undefined);
+const shortcutError = ref<string | null>(null);
+
+// 初始化快捷键
+onMounted(() => {
+  loadBackupData();
+  currentShortcut.value = settingsStore.settings.globalShortcut;
+});
+
+// 开始捕获快捷键
+function startCapturing() {
+  isCapturing.value = true;
+  shortcutError.value = null;
+}
+
+// 捕获按键
+function captureShortcut(e: KeyboardEvent) {
+  if (!isCapturing.value) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Escape 取消
+  if (e.key === 'Escape') {
+    isCapturing.value = false;
+    return;
+  }
+
+  // 收集修饰键
+  const modifiers: string[] = [];
+  if (e.ctrlKey) modifiers.push('Ctrl');
+  if (e.altKey) modifiers.push('Alt');
+  if (e.shiftKey) modifiers.push('Shift');
+
+  // 获取主按键
+  let key = e.key;
+  if (key.length === 1) {
+    key = key.toUpperCase();
+  } else if (key.startsWith('F') && /^\d+$/.test(key.slice(1))) {
+    // F1-F24 保持原样
+  } else if (['Enter', 'Space', 'Backspace', 'Tab', 'Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown'].includes(key)) {
+    // 特殊键保持原样
+  } else {
+    // 其他键忽略（如箭头键等）
+    return;
+  }
+
+  // 组合：最多3个按键（2个修饰键 + 1个主键）
+  const allKeys = [...modifiers, key];
+  if (allKeys.length > 3) {
+    allKeys.splice(2, allKeys.length - 3);
+  }
+
+  // 至少要有主键，单键必须是 F1-F24
+  if (modifiers.length === 0 && key.length > 1 && !key.startsWith('F') && !['Enter', 'Space'].includes(key)) {
+    return;
+  }
+
+  const shortcut = allKeys.join('+');
+  currentShortcut.value = shortcut;
+  isCapturing.value = false;
+
+  // 保存并注册
+  saveShortcut(shortcut);
+}
+
+// 保存快捷键
+async function saveShortcut(shortcut: string) {
+  try {
+    await updateGlobalShortcut(shortcut);
+    settingsStore.setGlobalShortcut(shortcut);
+    message.success(t('settings.shortcutRegistered'));
+    shortcutError.value = null;
+  } catch (e: any) {
+    const errorMsg = e?.message || e?.toString() || '';
+    shortcutError.value = t('settings.shortcutFailed');
+    message.error(t('settings.shortcutFailed'));
+    // 注册失败时清除设置，让用户知道需要重试
+    currentShortcut.value = undefined;
+    console.error('快捷键注册失败:', errorMsg);
+  }
+}
+
+// 清除快捷键
+async function clearShortcut() {
+  try {
+    await updateGlobalShortcut(null);
+    settingsStore.setGlobalShortcut(undefined);
+    currentShortcut.value = undefined;
+    message.success(t('settings.shortcutClear'));
+    shortcutError.value = null;
+  } catch (e) {
+    message.error(t('messages.deleteFailed'));
+    console.error(e);
+  }
+}
+
+// 格式化快捷键显示
+function formatShortcut(shortcut: string): string {
+  return shortcut.split('+').join(' + ');
 }
 
 // 导出数据
@@ -212,6 +315,42 @@ function goBack() {
             @update:value="(v: boolean) => settingsStore.setLaunchAtStartup(v)"
           />
         </div>
+      </div>
+
+      <NDivider />
+
+      <!-- 快捷键设置 -->
+      <div class="shortcut-section">
+        <NText depth="2" style="font-weight: 500">{{ t('settings.shortcut') }}</NText>
+
+        <div class="shortcut-input-wrapper" style="margin-top: 12px">
+          <div
+            class="shortcut-input"
+            :class="{ active: isCapturing, error: shortcutError }"
+            tabindex="0"
+            @click="startCapturing"
+            @keydown="captureShortcut"
+            @blur="isCapturing = false"
+          >
+            <span v-if="currentShortcut" class="shortcut-display">{{ formatShortcut(currentShortcut) }}</span>
+            <span v-else class="placeholder">{{ isCapturing ? t('settings.pressShortcut') : t('settings.clickToSet') }}</span>
+          </div>
+          <NButton v-if="currentShortcut" text size="small" @click="clearShortcut" style="margin-left: 8px">
+            <template #icon>
+              <NIcon :component="CloseIcon" size="16" />
+            </template>
+          </NButton>
+        </div>
+
+        <NText depth="3" style="font-size: 12px; margin-top: 8px; display: block; line-height: 1.6">
+          {{ t('settings.shortcutHint') }}
+        </NText>
+        <NText depth="3" style="font-size: 12px; display: block; line-height: 1.6">
+          {{ t('settings.shortcutHintFull') }}
+        </NText>
+        <NText v-if="shortcutError" type="error" style="font-size: 12px; display: block; margin-top: 4px">
+          {{ shortcutError }}
+        </NText>
       </div>
 
       <NDivider />
@@ -839,5 +978,67 @@ html.dark .preview-title-stack {
 
 html.dark .preview-desc-stack {
   color: #999;
+}
+
+/* 快捷键设置 */
+.shortcut-section {
+  margin-top: 8px;
+}
+
+.shortcut-input-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.shortcut-input {
+  min-width: 180px;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.15s;
+  outline: none;
+}
+
+html.dark .shortcut-input {
+  background: #2a2a2a;
+  border-color: #444;
+}
+
+.shortcut-input:hover {
+  border-color: #4A90D9;
+}
+
+.shortcut-input.active {
+  border-color: #4A90D9;
+  background: #e8f4fd;
+}
+
+html.dark .shortcut-input.active {
+  background: rgba(74, 144, 217, 0.15);
+}
+
+.shortcut-input.error {
+  border-color: #E05252;
+}
+
+.shortcut-display {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+html.dark .shortcut-display {
+  color: #e0e0e0;
+}
+
+.placeholder {
+  font-size: 14px;
+  color: #999;
+}
+
+html.dark .placeholder {
+  color: #666;
 }
 </style>

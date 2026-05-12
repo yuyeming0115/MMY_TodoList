@@ -96,6 +96,16 @@ export default {
     exportContent: '导出内容：任务分类、任务列表、剪贴板分类、剪贴板项目、设置',
     fileFormat: '文件格式：.mmytodo（点击导出后选择保存路径）',
     moreBackups: '个更多备份...',
+    // 快捷键设置
+    shortcut: '快捷键设置',
+    clickToSet: '点击设置快捷键',
+    pressShortcut: '请按下快捷键组合...',
+    shortcutHint: '设置快捷键可快速呼出/隐藏窗口（如 Ctrl+Alt+D）',
+    shortcutClear: '清除快捷键',
+    shortcutConflict: '快捷键可能与其他应用冲突',
+    shortcutRegistered: '快捷键已生效',
+    shortcutFailed: '快捷键注册失败，可能被系统或其他应用占用',
+    shortcutHintFull: '常见无法注册的快捷键：F1（帮助）、Alt+F4（关闭窗口）、系统保留组合等',
   },
   // 消息提示
   messages: {
