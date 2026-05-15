@@ -924,9 +924,9 @@ html.dark, html.dark body, html.dark #app {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: 0;
   overflow: hidden;
-  background: #f5f5f5;
+  background: transparent;
 }
 
 .app-layout {
@@ -1033,14 +1033,20 @@ html.dark .mac-btn .mac-btn-icon {
 .sidebar {
   width: 68px;
   flex-shrink: 0;
-  background: rgba(30, 30, 30, 0.65);
+  background: rgba(245, 245, 245, 0.7);
   display: flex;
   flex-direction: column;
   z-index: 10;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px 0 0 10px;
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
+}
+
+html.dark .sidebar {
+  background: rgba(30, 30, 30, 0.25);
+  border-right-color: rgba(255, 255, 255, 0.08);
 }
 
 /* Mac 端：侧边栏顶部红黄绿按钮区域 */
@@ -1121,6 +1127,7 @@ html.dark .sidebar-btn.active {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border-radius: 0 10px 10px 0;
 }
 
 .panel {
@@ -1172,7 +1179,7 @@ html.dark .panel {
 }
 
 html.dark .app-container {
-  background: #1a1a1a;
+  background: transparent;
 }
 
 /* 窗口拖拽区域 - Tauri v2 */
