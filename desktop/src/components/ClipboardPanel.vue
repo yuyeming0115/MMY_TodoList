@@ -372,6 +372,7 @@ function cancelEdit() {
             @batch-move-to-category="batchMoveToCategory"
             @batch-favorite="batchFavorite"
             @batch-lock="batchLock"
+            @batch-delete="deleteSelected"
           />
         </div>
       </template>

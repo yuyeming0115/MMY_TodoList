@@ -30,6 +30,7 @@ const emit = defineEmits<{
   (e: 'batch-move-to-category', categoryId: string): void;
   (e: 'batch-favorite'): void;
   (e: 'batch-lock'): void;
+  (e: 'batch-delete'): void;
 }>();
 
 const message = useMessage();
@@ -291,7 +292,14 @@ async function handleMenuSelect(key: string) {
   }
   if (key === 'edit') startEdit();
   if (key === 'openFolder') openImageFolder();
-  if (key === 'delete') emit('delete', props.item.id);
+  if (key === 'delete') {
+    // 选择模式下批量删除
+    if (props.showCheckbox) {
+      emit('batch-delete');
+    } else {
+      emit('delete', props.item.id);
+    }
+  }
   if (key === 'enter_select') emit('enter-select-mode');
   if (key.startsWith('move_')) {
     const catId = key.slice(5);
