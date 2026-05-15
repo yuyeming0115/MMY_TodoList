@@ -224,11 +224,6 @@ function onDragEnd() {
 
 // 初始化加载
 onMounted(async () => {
-  // 设置平台 class
-  if (isMac) {
-    document.documentElement.classList.add('platform-mac');
-  }
-
   await Promise.all([
     categoryStore.load(),
     taskStore.load(),
@@ -603,6 +598,17 @@ function goBackToMain() {
   currentPage.value = 'main';
 }
 
+/// 全局窗口拖拽（header 区域，排除交互元素）
+async function startWindowDrag(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (target.closest('button, .mac-window-controls, .win-controls')) {
+    return;
+  }
+  try {
+    await appWindow.startDragging();
+  } catch (_) {}
+}
+
 /// 分类标签区域拖拽（点击空白处拖拽窗口）
 async function startTabsDrag(e: MouseEvent) {
   const target = e.target as HTMLElement;
@@ -627,9 +633,22 @@ async function hideToTray() {
 <template>
   <div class="app-layout">
           <!-- 全局 Header（最上方，极简） -->
-          <div class="global-header">
-            <div class="header" data-tauri-drag-region>
-              <!-- 窗口控制按钮（仅 Windows） -->
+          <div class="global-header" @mousedown="startWindowDrag">
+            <div class="header">
+              <!-- Mac 端：自定义红黄绿按钮 -->
+              <div v-if="isMac" class="mac-window-controls">
+                <button class="mac-btn close" @click="hideToTray()" title="关闭">
+                  <span class="mac-btn-icon">×</span>
+                </button>
+                <button class="mac-btn minimize" @click="appWindow.minimize()" title="最小化">
+                  <span class="mac-btn-icon">−</span>
+                </button>
+                <button class="mac-btn maximize" @click="toggleMaximize()" :title="isMaximized ? '还原' : '最大化'">
+                  <span class="mac-btn-icon">＋</span>
+                </button>
+              </div>
+
+              <!-- Windows 端：自定义按钮 -->
               <div class="window-controls win-controls" v-if="isWindows">
                 <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
                   <template #icon>
@@ -917,6 +936,7 @@ html.dark, html.dark body, html.dark #app {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  border-radius: 10px;
 }
 
 /* 全局 Header（最上方，极简） */
@@ -925,7 +945,10 @@ html.dark, html.dark body, html.dark #app {
   flex-shrink: 0;
   background: #f5f5f5;
   border-bottom: 1px solid #e0e0e0;
-  padding: 8px 12px;
+  padding: 10px 12px;
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
 }
 
 html.dark .global-header {
@@ -937,6 +960,67 @@ html.dark .global-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* Mac 端自定义红黄绿按钮 */
+.mac-window-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mac-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 0;
+  transition: filter 0.1s;
+}
+
+.mac-btn .mac-btn-icon {
+  display: none;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.5);
+  position: relative;
+  top: -1px;
+}
+
+.mac-window-controls:hover .mac-btn .mac-btn-icon {
+  display: block;
+}
+
+.mac-btn.close {
+  background: #FF5F57;
+}
+.mac-btn.minimize {
+  background: #FFBD2E;
+}
+.mac-btn.maximize {
+  background: #28C840;
+}
+
+html.dark .mac-btn.close {
+  background: #FF5F57;
+}
+html.dark .mac-btn.minimize {
+  background: #FFBD2E;
+}
+html.dark .mac-btn.maximize {
+  background: #28C840;
+}
+
+html.dark .mac-btn .mac-btn-icon {
+  color: rgba(0, 0, 0, 0.6);
 }
 
 /* 侧边栏 + 内容区 */
@@ -1084,25 +1168,6 @@ html.dark .app-container {
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
-}
-
-/* Mac overlay 标题栏适配（红绿灯悬浮在内容上，类似微信） */
-html.platform-mac .global-header {
-  padding-top: 40px;
-  padding-bottom: 4px;
-}
-
-html.platform-mac .sidebar {
-  padding-top: 40px;
-}
-
-html.platform-mac .header {
-  padding-left: 12px;
-  padding-top: 0;
-}
-
-html.platform-mac .app-container {
-  border-radius: 10px;
 }
 
 html.dark .header {
