@@ -27,7 +27,7 @@ watch(isDark, (val) => {
 
 <template>
   <NConfigProvider :theme="isDark ? darkTheme : null" :themeOverrides="themeOverrides">
-    <NMessageProvider>
+    <NMessageProvider :container-style="{ top: '48px !important' }">
       <NDialogProvider>
         <Home />
       </NDialogProvider>
