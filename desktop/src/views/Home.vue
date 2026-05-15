@@ -675,7 +675,7 @@ async function hideToTray() {
             <span class="mac-btn-icon">−</span>
           </button>
           <button class="mac-btn maximize" @click.stop="toggleMaximize()" :title="isMaximized ? '还原' : '最大化'">
-            <span class="mac-btn-icon">＋</span>
+            <span class="mac-btn-icon">⧉</span>
           </button>
         </div>
 
@@ -910,13 +910,13 @@ async function hideToTray() {
 html, body, #app {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #f5f5f5;
+  background: transparent;
   color: #333;
 }
 
 /* 深色模式 */
 html.dark, html.dark body, html.dark #app {
-  background: #1a1a1a;
+  background: transparent;
   color: #e0e0e0;
 }
 
@@ -929,13 +929,17 @@ html.dark, html.dark body, html.dark #app {
   background: #f5f5f5;
 }
 
-/* 侧边栏布局 */
 .app-layout {
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
   border-radius: 10px;
+  background: #f5f5f5;
+}
+
+html.dark .app-layout {
+  background: #1a1a1a;
 }
 
 /* 全局 Header（仅 Windows） */
@@ -1031,7 +1035,7 @@ html.dark .mac-btn .mac-btn-icon {
 }
 
 .sidebar {
-  width: 52px;
+  width: 68px;
   flex-shrink: 0;
   background: #e8e8e8;
   display: flex;
