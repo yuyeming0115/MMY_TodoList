@@ -145,7 +145,6 @@ export default {
     selected: '已选 {count} / {total}',
     selectAll: '全选',
     deleteSelectedBtn: '删除选中',
-    favoriteSelectedBtn: '收藏选中',
     favoriteSelected: '已收藏 {count} 项',
     exitSelectMode: '退出',
     confirmDeleteSelected: '确定删除选中的 {count} 项吗？',

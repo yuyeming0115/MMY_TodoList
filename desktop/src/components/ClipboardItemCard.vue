@@ -28,6 +28,7 @@ const emit = defineEmits<{
   (e: 'enter-select-mode'): void;
   (e: 'move-to-category', item: ClipboardItem, categoryId: string): void;
   (e: 'batch-move-to-category', categoryId: string): void;
+  (e: 'batch-favorite'): void;
 }>();
 
 const message = useMessage();
@@ -272,7 +273,14 @@ async function handleMenuSelect(key: string) {
     return;
   }
   if (key === 'copy') copyContent();
-  if (key === 'favorite') handleFavorite();
+  if (key === 'favorite') {
+    // 选择模式下批量收藏
+    if (props.showCheckbox) {
+      emit('batch-favorite');
+    } else {
+      handleFavorite();
+    }
+  }
   if (key === 'edit') startEdit();
   if (key === 'openFolder') openImageFolder();
   if (key === 'delete') emit('delete', props.item.id);

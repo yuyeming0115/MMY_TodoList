@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch, h } from 'vue';
+import { ref, computed, watch, h, onMounted, onUnmounted } from 'vue';
 import { NDropdown, NIcon, NInput, NPopconfirm, useMessage } from 'naive-ui';
-import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon, StarOutline as FavoriteIcon } from '@vicons/ionicons5';
+import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import { useI18n } from '../composables/useI18n';
@@ -88,6 +88,23 @@ function enterSelectModeFromCard() {
   }
 }
 
+// ESC 键退出选择模式
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && selectMode.value) {
+    selectMode.value = false;
+    selectedIds.value = new Set();
+    selectionAnchor.value = null;
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
+
 // 移动分类
 function moveToCategory(item: ClipboardItem, categoryId: string) {
   item.categoryId = categoryId;
@@ -146,7 +163,7 @@ async function deleteSelected() {
 }
 
 // 批量收藏
-async function favoriteSelected() {
+async function batchFavorite() {
   const ids = [...selectedIds.value];
   if (ids.length === 0) return;
 
@@ -302,10 +319,6 @@ function cancelEdit() {
         <NIcon :component="CheckAllIcon" size="16" />
         {{ t('messages.selectAll') }}
       </button>
-      <button class="toolbar-btn favorite" @click="favoriteSelected" :disabled="selectedIds.size === 0" :title="t('messages.favoriteSelectedBtn')">
-        <NIcon :component="FavoriteIcon" size="16" />
-        {{ t('messages.favoriteSelectedBtn') }}
-      </button>
       <NPopconfirm @positive-click="deleteSelected">
         <template #trigger>
           <button class="toolbar-btn danger" :disabled="selectedIds.size === 0" :title="t('messages.deleteSelectedBtn')">
@@ -356,6 +369,7 @@ function cancelEdit() {
             @enter-select-mode="enterSelectModeFromCard"
             @move-to-category="moveToCategory"
             @batch-move-to-category="batchMoveToCategory"
+            @batch-favorite="batchFavorite"
           />
         </div>
       </template>
@@ -470,16 +484,6 @@ html.dark .selection-toolbar {
   color: #fff;
 }
 
-.toolbar-btn.favorite {
-  color: #F39C12;
-  border-color: #F39C12;
-}
-
-.toolbar-btn.favorite:hover:not(:disabled) {
-  background: #F39C12;
-  color: #fff;
-}
-
 html.dark .toolbar-btn {
   background: #2a2a2a;
   border-color: #444;
@@ -499,16 +503,6 @@ html.dark .toolbar-btn.danger {
 
 html.dark .toolbar-btn.danger:hover:not(:disabled) {
   background: #E05252;
-  color: #fff;
-}
-
-html.dark .toolbar-btn.favorite {
-  color: #F39C12;
-  border-color: #F39C12;
-}
-
-html.dark .toolbar-btn.favorite:hover:not(:disabled) {
-  background: #F39C12;
   color: #fff;
 }
 

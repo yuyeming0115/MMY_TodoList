@@ -145,7 +145,6 @@ export default {
     selected: 'Selected {count} / {total}',
     selectAll: 'Select All',
     deleteSelectedBtn: 'Delete Selected',
-    favoriteSelectedBtn: 'Favorite Selected',
     favoriteSelected: 'Favorited {count} items',
     exitSelectMode: 'Exit',
     confirmDeleteSelected: 'Delete {count} selected items?',
