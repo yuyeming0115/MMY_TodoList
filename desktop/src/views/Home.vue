@@ -227,7 +227,7 @@ onMounted(async () => {
 
   // 窗口宽度迁移：旧用户窗口太窄时重置
   const { windowWidth } = settingsStore.settings;
-  if (windowWidth && windowWidth < 500) {
+  if (windowWidth && windowWidth < 450) {
     settingsStore.setWindowSize(680, settingsStore.settings.windowHeight || 600);
     await appWindow.setSize(new LogicalSize(680, settingsStore.settings.windowHeight || 600));
   }
