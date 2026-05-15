@@ -12,6 +12,7 @@ export default {
   // 头部按钮
   header: {
     addTask: '添加任务',
+    task: '任务',
     paste: '粘贴',
     searchClipboard: '搜索剪贴板...',
     searchTasks: '搜索任务...',

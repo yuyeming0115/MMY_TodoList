@@ -647,12 +647,12 @@ async function hideToTray() {
                   <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
                 </button>
                 <NButton
-                  type="primary" size="tiny" round
+                  type="primary" size="small"
                   @click="openAddTask"
                   class="search-action-btn"
                 >
                   <template #icon><NIcon :component="AddIcon" /></template>
-                  {{ t('header.addTask') }}
+                  {{ t('header.task') }}
                 </NButton>
               </div>
               <div v-else-if="activePanel === 'clipboard'" class="clipboard-search-row">
@@ -668,7 +668,7 @@ async function hideToTray() {
                   <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
                 </button>
                 <NButton
-                  type="primary" size="tiny" round
+                  type="primary" size="small"
                   @click="handlePasteClipboard"
                   class="search-action-btn"
                 >

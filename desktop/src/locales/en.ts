@@ -12,6 +12,7 @@ export default {
   // 头部按钮
   header: {
     addTask: 'Add Task',
+    task: 'Task',
     paste: 'Paste',
     searchClipboard: 'Search clipboard...',
     searchTasks: 'Search tasks...',
