@@ -15,6 +15,8 @@ export const useSettingsStore = defineStore('settings', () => {
     clipboardStackGap: 64,
     taskViewMode: 'normal',
     globalShortcut: undefined,
+    taskSortMode: 'custom',
+    customSortBackup: undefined,
   });
 
   async function load() {
@@ -74,6 +76,14 @@ export const useSettingsStore = defineStore('settings', () => {
     update({ globalShortcut: shortcut });
   }
 
+  function setTaskSortMode(mode: 'custom' | 'name' | 'updatedAt') {
+    update({ taskSortMode: mode });
+  }
+
+  function setCustomSortBackup(backup: Record<string, number> | undefined) {
+    update({ customSortBackup: backup });
+  }
+
   return {
     settings,
     load,
@@ -90,5 +100,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setClipboardStackGap,
     setTaskViewMode,
     setGlobalShortcut,
+    setTaskSortMode,
+    setCustomSortBackup,
   };
 });

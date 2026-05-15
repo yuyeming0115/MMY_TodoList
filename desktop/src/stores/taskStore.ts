@@ -1,14 +1,21 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import type { Task } from '../types';
 import { getTasks, addTask, updateTask, deleteTask, reorderTasks, resetTaskSort } from '../utils/db';
 import { FREE_TASK_PER_CATEGORY_LIMIT } from '../types';
 import { useCategoryStore } from './categoryStore';
+import { useSettingsStore } from './settingsStore';
 
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<Task[]>([]);
   const searchQuery = ref('');
   const loading = ref(false);
+
+  // 从 settingsStore 同步排序模式
+  const sortMode = computed(() => {
+    const settingsStore = useSettingsStore();
+    return settingsStore.settings.taskSortMode || 'custom';
+  });
 
   // 检查任务是否在锁定分类下
   function isTaskLocked(task: Task): boolean {
@@ -105,10 +112,39 @@ export const useTaskStore = defineStore('task', () => {
     tasks.value = [...tasks.value].sort((a, b) => a.sortOrder - b.sortOrder);
   }
 
+  // 设置排序模式
+  async function setSortMode(mode: 'custom' | 'name' | 'updatedAt') {
+    const settingsStore = useSettingsStore();
+
+    if (mode !== 'custom' && sortMode.value === 'custom') {
+      // 切换到自动排序前，备份当前的 sortOrder
+      const backup: Record<string, number> = {};
+      tasks.value.forEach(t => { backup[t.id] = t.sortOrder; });
+      settingsStore.setCustomSortBackup(backup);
+    }
+
+    if (mode === 'custom' && sortMode.value !== 'custom') {
+      // 切换回自定义排序时，从备份恢复 sortOrder
+      const backup = settingsStore.settings.customSortBackup;
+      if (backup) {
+        for (const task of tasks.value) {
+          if (backup[task.id] !== undefined) {
+            task.sortOrder = backup[task.id];
+            await updateTask(task);
+          }
+        }
+        await load();
+      }
+    }
+
+    settingsStore.setTaskSortMode(mode);
+  }
+
   return {
     tasks,
     searchQuery,
     loading,
+    sortMode,
     load,
     add,
     addQuickTask,
@@ -118,5 +154,6 @@ export const useTaskStore = defineStore('task', () => {
     resetSort,
     toggleStatus,
     isTaskLocked,
+    setSortMode,
   };
 });

@@ -164,4 +164,10 @@ export default {
   drag: {
     crossAppDrag: '拖拽到其它应用',
   },
+  // 排序
+  sort: {
+    custom: '自定义排序',
+    name: '按名字排序',
+    updatedAt: '按修改日期排序',
+  },
 };

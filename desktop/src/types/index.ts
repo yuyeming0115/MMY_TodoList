@@ -40,6 +40,8 @@ export interface AppSettings {
   clipboardStackGap: number; // 层叠模式卡片间距（px）
   taskViewMode: 'normal' | 'stacked'; // 任务视图模式
   globalShortcut?: string; // 全局快捷键（如 "Ctrl+Alt+D")
+  taskSortMode?: 'custom' | 'name' | 'updatedAt'; // 任务排序模式
+  customSortBackup?: Record<string, number>; // 切换排序时保存的 sortOrder 备份
 }
 
 export interface ExportData {

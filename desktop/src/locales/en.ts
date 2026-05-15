@@ -164,4 +164,10 @@ export default {
   drag: {
     crossAppDrag: 'Drag to other apps',
   },
+  // 排序
+  sort: {
+    custom: 'Custom Order',
+    name: 'Sort by Name',
+    updatedAt: 'Sort by Modified',
+  },
 };

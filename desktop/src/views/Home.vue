@@ -10,7 +10,8 @@ import {
   CloseOutline as CloseIcon, RemoveOutline as MinusIcon,
   ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon,
   ListOutline as ListIcon, ClipboardOutline as ClipboardIcon,
-  CopyOutline as CopyIcon, LayersOutline as StackedIcon
+  CopyOutline as CopyIcon, LayersOutline as StackedIcon,
+  SwapVerticalOutline as SortIcon
 } from '@vicons/ionicons5';
 import { h } from 'vue';
 import draggable from 'vuedraggable';
@@ -159,8 +160,8 @@ const editingTask = ref<Task | null>(null);
 
 // 拖拽状态
 const isDragging = ref(false);
-// 搜索时禁用拖拽（其他情况均可拖拽）
-const dragEnabled = computed(() => !taskStore.searchQuery);
+// 搜索时或自动排序时禁用拖拽
+const dragEnabled = computed(() => !taskStore.searchQuery && taskStore.sortMode === 'custom');
 
 const filteredTasks = computed(() => {
   let tasks = [...taskStore.tasks];
@@ -184,8 +185,18 @@ const filteredTasks = computed(() => {
     tasks = tasks.filter(t => t.status !== 'done');
   }
 
-  // 按 sortOrder 排序
-  tasks.sort((a, b) => a.sortOrder - b.sortOrder);
+  // 根据排序模式排序
+  const sortMode = taskStore.sortMode;
+  if (sortMode === 'name') {
+    // 按名字升序（A→Z）
+    tasks.sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+  } else if (sortMode === 'updatedAt') {
+    // 按修改日期降序（最新在前）
+    tasks.sort((a, b) => b.updatedAt - a.updatedAt);
+  } else {
+    // 自定义排序：按 sortOrder
+    tasks.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
 
   return tasks;
 });
@@ -402,6 +413,24 @@ function toggleTheme() {
 function toggleLanguage() {
   const next = settingsStore.settings.language === 'zh' ? 'en' : 'zh';
   settingsStore.setLanguage(next);
+}
+
+// 任务排序
+const sortModeOptions = computed(() => [
+  { label: t('sort.custom'), key: 'custom' },
+  { label: t('sort.name'), key: 'name' },
+  { label: t('sort.updatedAt'), key: 'updatedAt' },
+]);
+
+const sortModeLabel = computed(() => {
+  const mode = taskStore.sortMode;
+  if (mode === 'name') return t('sort.name');
+  if (mode === 'updatedAt') return t('sort.updatedAt');
+  return t('sort.custom');
+});
+
+function handleSortSelect(key: 'custom' | 'name' | 'updatedAt') {
+  taskStore.setSortMode(key);
 }
 
 // 剪贴板视图切换
@@ -646,6 +675,15 @@ async function hideToTray() {
                 <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
                   <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
                 </button>
+                <NDropdown
+                  placement="bottom-end"
+                  :options="sortModeOptions"
+                  @select="handleSortSelect"
+                >
+                  <button class="view-toggle-btn" :title="sortModeLabel">
+                    <NIcon :component="SortIcon" size="16" />
+                  </button>
+                </NDropdown>
                 <NButton
                   type="primary" size="small"
                   @click="openAddTask"
