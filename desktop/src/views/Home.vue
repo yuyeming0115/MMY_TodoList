@@ -697,7 +697,9 @@ async function hideToTray() {
                   <template #icon><NIcon :component="AddIcon" /></template>
                   {{ t('header.task') }}
                 </NButton>
-                <SearchBar />
+                <div class="search-bar-wrapper">
+                  <SearchBar />
+                </div>
                 <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
                   <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
                 </button>
@@ -1206,7 +1208,7 @@ html.dark .win-controls .win-btn:hover {
   align-items: center;
 }
 
-.task-search-row > :first-child {
+.task-search-row .search-bar-wrapper {
   flex: 1;
   min-width: 0;
 }
