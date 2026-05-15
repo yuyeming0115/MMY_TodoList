@@ -34,6 +34,8 @@ export default {
     copy: '复制',
     favorite: '收藏',
     unfavorite: '取消收藏',
+    lock: '锁定',
+    unlock: '解锁',
     edit: '编辑',
     openFolder: '打开图片所在文件夹',
     setExpiry: '设置过期时间',
@@ -143,8 +145,11 @@ export default {
     favoriteCategoryNotFound: '收藏分类不存在，请刷新后重试',
     // 选择模式
     favoriteSelected: '已收藏 {count} 项',
-    favoriteCannotDelete: '收藏卡不能被删除',
-    favoriteExcludedFromDelete: '已排除 {count} 个收藏卡不删除',
+    locked: '已锁定',
+    unlocked: '已解锁',
+    lockedSelected: '已锁定 {count} 项',
+    lockedCannotDelete: '锁定的卡片不能被删除',
+    lockedExcludedFromDelete: '已排除 {count} 个锁定的卡片不删除',
     deleteSelected: '已删除 {count} 项',
   },
   // 分类相关

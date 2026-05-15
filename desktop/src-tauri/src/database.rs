@@ -149,7 +149,8 @@ impl Database {
                 priority INTEGER DEFAULT 1,
                 sort_order INTEGER DEFAULT 0,
                 created_at INTEGER,
-                expires_at INTEGER
+                expires_at INTEGER,
+                locked INTEGER DEFAULT 0
             )",
             [],
         )?;
@@ -158,6 +159,7 @@ impl Database {
         conn.execute("ALTER TABLE clipboard_items ADD COLUMN image_path TEXT", []).ok();
         conn.execute("ALTER TABLE clipboard_items ADD COLUMN thumbnail_base64 TEXT", []).ok();
         conn.execute("ALTER TABLE clipboard_items ADD COLUMN expires_at INTEGER", []).ok();
+        conn.execute("ALTER TABLE clipboard_items ADD COLUMN locked INTEGER DEFAULT 0", []).ok();
 
         // 初始化默认剪贴板分类（文本、图像、收藏）
         let cb_count: i64 = conn.query_row("SELECT COUNT(*) FROM clipboard_categories", [], |r| r.get(0))?;
@@ -633,7 +635,7 @@ impl Database {
             .unwrap()
             .as_millis() as i64;
         let mut stmt = conn.prepare(
-            "SELECT id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1 ORDER BY sort_order"
+            "SELECT id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at, locked FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1 ORDER BY sort_order"
         )?;
 
         let items = stmt.query_map([now], |row| {
@@ -649,6 +651,7 @@ impl Database {
                 sort_order: row.get(8)?,
                 created_at: row.get(9)?,
                 expires_at: row.get(10)?,
+                locked: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
             })
         })?.collect::<SqliteResult<Vec<ClipboardItem>>>();
 
@@ -658,7 +661,7 @@ impl Database {
     pub fn add_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT OR REPLACE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT OR REPLACE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at, locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
                 &item.id,
                 &item.category_id,
@@ -671,6 +674,7 @@ impl Database {
                 &item.sort_order,
                 &item.created_at,
                 &item.expires_at,
+                item.locked.map(|v| if v { 1 } else { 0 }),
             ],
         )?;
         Ok(())
@@ -679,7 +683,7 @@ impl Database {
     pub fn update_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE clipboard_items SET category_id = ?1, title = ?2, content = ?3, image_base64 = ?4, image_path = ?5, thumbnail_base64 = ?6, priority = ?7, sort_order = ?8, expires_at = ?9 WHERE id = ?10",
+            "UPDATE clipboard_items SET category_id = ?1, title = ?2, content = ?3, image_base64 = ?4, image_path = ?5, thumbnail_base64 = ?6, priority = ?7, sort_order = ?8, expires_at = ?9, locked = ?10 WHERE id = ?11",
             rusqlite::params![
                 &item.category_id,
                 &item.title,
@@ -690,6 +694,7 @@ impl Database {
                 &item.priority,
                 &item.sort_order,
                 &item.expires_at,
+                item.locked.map(|v| if v { 1 } else { 0 }),
                 &item.id,
             ],
         )?;

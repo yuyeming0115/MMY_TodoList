@@ -147,6 +147,7 @@ pub struct ClipboardItem {
     pub sort_order: i32,
     pub created_at: i64,
     pub expires_at: Option<i64>,
+    pub locked: Option<bool>, // 是否锁定（禁止删除）
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -34,6 +34,8 @@ export default {
     copy: 'Copy',
     favorite: 'Favorite',
     unfavorite: 'Unfavorite',
+    lock: 'Lock',
+    unlock: 'Unlock',
     edit: 'Edit',
     openFolder: 'Open image folder',
     setExpiry: 'Set expiry time',
@@ -143,8 +145,11 @@ export default {
     favoriteCategoryNotFound: 'Favorite category not found, please refresh',
     // 选择模式
     favoriteSelected: 'Favorited {count} items',
-    favoriteCannotDelete: 'Favorite cards cannot be deleted',
-    favoriteExcludedFromDelete: '{count} favorite cards excluded from deletion',
+    locked: 'Locked',
+    unlocked: 'Unlocked',
+    lockedSelected: 'Locked {count} items',
+    lockedCannotDelete: 'Locked cards cannot be deleted',
+    lockedExcludedFromDelete: '{count} locked cards excluded from deletion',
     deleteSelected: 'Deleted {count} items',
   },
   // 分类相关

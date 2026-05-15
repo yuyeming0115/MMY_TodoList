@@ -220,6 +220,32 @@ export const useClipboardStore = defineStore('clipboard', () => {
     return count;
   }
 
+  // 锁定/解锁项目
+  async function lockItem(item: ClipboardItem): Promise<void> {
+    item.locked = true;
+    await updateClipboardItem(item);
+    const index = items.value.findIndex(i => i.id === item.id);
+    if (index !== -1) items.value[index] = item;
+  }
+
+  async function unlockItem(item: ClipboardItem): Promise<void> {
+    item.locked = false;
+    await updateClipboardItem(item);
+    const index = items.value.findIndex(i => i.id === item.id);
+    if (index !== -1) items.value[index] = item;
+  }
+
+  // 切换锁定状态
+  async function toggleItemLock(item: ClipboardItem): Promise<'locked' | 'unlocked'> {
+    if (item.locked) {
+      await unlockItem(item);
+      return 'unlocked';
+    } else {
+      await lockItem(item);
+      return 'locked';
+    }
+  }
+
   // 收藏/取消收藏项目，返回操作结果：'favorited' | 'unfavorited' | 'error'
   async function favoriteItem(item: ClipboardItem): Promise<'favorited' | 'unfavorited' | 'error'> {
     const favoriteCat = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
@@ -342,5 +368,8 @@ export const useClipboardStore = defineStore('clipboard', () => {
     favoriteItem,
     setItemExpiry,
     cleanupExpiredItems,
+    lockItem,
+    unlockItem,
+    toggleItemLock,
   };
 });

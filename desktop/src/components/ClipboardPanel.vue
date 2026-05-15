@@ -133,18 +133,18 @@ function selectAll() {
   if (!selectMode.value) selectMode.value = true;
 }
 
-// 批量删除（过滤收藏卡，只删除非收藏的选中项）
+// 批量删除（过滤锁定卡片，只删除非锁定的选中项）
 async function deleteSelected() {
-  // 过滤出非收藏卡的选中项
+  // 过滤出非锁定的选中项
   const ids = [...selectedIds.value].filter(id => {
     const item = clipboardStore.items.find(i => i.id === id);
-    return item && item.categoryId !== BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE;
+    return item && !item.locked;
   });
 
   if (ids.length === 0) {
-    // 如果只有收藏卡被选中，提示用户
+    // 如果只有锁定卡片被选中，提示用户
     if (selectedIds.value.size > 0) {
-      message.warning(t('messages.favoriteCannotDelete'));
+      message.warning(t('messages.lockedCannotDelete'));
     }
     return;
   }
@@ -152,10 +152,10 @@ async function deleteSelected() {
   await clipboardStore.removeItems(ids);
   message.success(t('messages.deleteSelected', { count: ids.length }));
 
-  // 如果有收藏卡被排除，额外提示
+  // 如果有锁定卡片被排除，额外提示
   const excludedCount = selectedIds.value.size - ids.length;
   if (excludedCount > 0) {
-    message.info(t('messages.favoriteExcludedFromDelete', { count: excludedCount }));
+    message.info(t('messages.lockedExcludedFromDelete', { count: excludedCount }));
   }
 
   selectedIds.value = new Set();
@@ -179,6 +179,28 @@ async function batchFavorite() {
 
   if (favoritedCount > 0) {
     message.success(t('messages.favoriteSelected', { count: favoritedCount }));
+  }
+  selectedIds.value = new Set();
+  selectMode.value = false;
+  selectionAnchor.value = null;
+}
+
+// 批量锁定
+async function batchLock() {
+  const ids = [...selectedIds.value];
+  if (ids.length === 0) return;
+
+  let lockedCount = 0;
+  for (const id of ids) {
+    const item = clipboardStore.items.find(i => i.id === id);
+    if (item && !item.locked) {
+      await clipboardStore.lockItem(item);
+      lockedCount++;
+    }
+  }
+
+  if (lockedCount > 0) {
+    message.success(t('messages.lockedSelected', { count: lockedCount }));
   }
   selectedIds.value = new Set();
   selectMode.value = false;
@@ -349,6 +371,7 @@ function cancelEdit() {
             @move-to-category="moveToCategory"
             @batch-move-to-category="batchMoveToCategory"
             @batch-favorite="batchFavorite"
+            @batch-lock="batchLock"
           />
         </div>
       </template>

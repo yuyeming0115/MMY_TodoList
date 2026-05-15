@@ -72,6 +72,7 @@ export interface ClipboardItem {
   sortOrder: number;
   createdAt: number;
   expiresAt?: number | null;
+  locked?: boolean; // 是否锁定（禁止删除）
 }
 
 // 内置分类 ID 常量（不可删除）

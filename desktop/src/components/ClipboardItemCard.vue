@@ -4,7 +4,7 @@ import { h, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import {
   TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon,
   CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
-  ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon,
+  ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon, LockClosedOutline as LockIcon,
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
@@ -29,6 +29,7 @@ const emit = defineEmits<{
   (e: 'move-to-category', item: ClipboardItem, categoryId: string): void;
   (e: 'batch-move-to-category', categoryId: string): void;
   (e: 'batch-favorite'): void;
+  (e: 'batch-lock'): void;
 }>();
 
 const message = useMessage();
@@ -54,6 +55,7 @@ onUnmounted(() => {
 });
 
 const isFavorite = computed(() => props.item.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
+const isLocked = computed(() => props.item.locked === true);
 const isTextItem = computed(() => !props.item.imageBase64 && !props.item.imagePath);
 const isBuiltinCategory = computed(() =>
   ([BUILTIN_CLIPBOARD_CATEGORIES.TEXT, BUILTIN_CLIPBOARD_CATEGORIES.IMAGE] as string[]).includes(props.item.categoryId)
@@ -120,6 +122,7 @@ const contextMenuOptions = computed(() => {
   const options: any[] = [
     { label: t('contextMenu.copy'), key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
     { label: isFavorite.value ? t('contextMenu.unfavorite') : t('contextMenu.favorite'), key: 'favorite', icon: () => h(NIcon, { component: isFavorite.value ? StarFilledIcon : StarIcon, size: 16, style: { color: isFavorite.value ? '#F39C12' : '#333' } }) },
+    { label: isLocked.value ? t('contextMenu.unlock') : t('contextMenu.lock'), key: 'lock', icon: () => h(NIcon, { component: LockIcon, size: 16, style: { color: isLocked.value ? '#E05252' : '#333' } }) },
   ];
 
   // 只有文本类型才显示编辑
@@ -162,7 +165,7 @@ const contextMenuOptions = computed(() => {
   options.push({ type: 'divider', key: 'd1' });
   options.push({ label: t('contextMenu.enterSelectMode'), key: 'enter_select', icon: () => h(NIcon, { component: SelectIcon, size: 16 }) });
   options.push({ label: t('contextMenu.delete'), key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
-  options.push({ type: 'divider', key: 'd2' });
+  options.push({ type: 'divider', key: 'd3' });
   options.push({ label: t('contextMenu.cleanupExpired'), key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 16, style: { color: '#E05252' } }) });
   return options;
 });
@@ -275,6 +278,15 @@ async function handleMenuSelect(key: string) {
       emit('batch-favorite');
     } else {
       handleFavorite();
+    }
+  }
+  if (key === 'lock') {
+    // 选择模式下批量锁定
+    if (props.showCheckbox) {
+      emit('batch-lock');
+    } else {
+      const result = await clipboardStore.toggleItemLock(props.item);
+      message.success(result === 'locked' ? t('messages.locked') : t('messages.unlocked'));
     }
   }
   if (key === 'edit') startEdit();
@@ -438,8 +450,11 @@ function handleCrossAppDragEnd(_e: DragEvent) {
       </div>
     </div>
 
+    <!-- 锁定角标 -->
+    <div v-if="isLocked" class="locked-badge">🔒</div>
+
     <!-- 收藏角标 -->
-    <div v-if="isFavorite" class="favorite-badge">🔒</div>
+    <div v-if="isFavorite" class="favorite-badge">⭐</div>
 
     <!-- 过期时间提示 -->
     <div v-if="expiryLabel" class="expiry-badge" :class="{ warning: isExpiringSoon }">
@@ -820,6 +835,16 @@ html.dark .cross-app-drag-handle:hover {
 .favorite-badge {
   position: absolute;
   top: 8px;
+  right: 8px;
+  font-size: 14px;
+  z-index: 6;
+  pointer-events: none;
+}
+
+/* 锁定角标 */
+.locked-badge {
+  position: absolute;
+  top: 28px;
   right: 8px;
   font-size: 14px;
   z-index: 6;
