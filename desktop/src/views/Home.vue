@@ -632,56 +632,55 @@ async function hideToTray() {
 
 <template>
   <div class="app-layout">
-          <!-- 全局 Header（最上方，极简） -->
-          <div class="global-header" @mousedown="startWindowDrag">
-            <div class="header">
-              <!-- Mac 端：自定义红黄绿按钮 -->
-              <div v-if="isMac" class="mac-window-controls">
-                <button class="mac-btn close" @click="hideToTray()" title="关闭">
-                  <span class="mac-btn-icon">×</span>
-                </button>
-                <button class="mac-btn minimize" @click="appWindow.minimize()" title="最小化">
-                  <span class="mac-btn-icon">−</span>
-                </button>
-                <button class="mac-btn maximize" @click="toggleMaximize()" :title="isMaximized ? '还原' : '最大化'">
-                  <span class="mac-btn-icon">＋</span>
-                </button>
-              </div>
+    <!-- Windows 端：全局 Header -->
+    <div v-if="isWindows" class="global-header" @mousedown="startWindowDrag">
+      <div class="header">
+        <div class="window-controls win-controls">
+          <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
+            <template #icon>
+              <NIcon :component="MinusIcon" :size="12" />
+            </template>
+          </NButton>
+          <NButton quaternary size="tiny" class="win-btn" @click="toggleMaximize()">
+            <template #icon>
+              <NIcon :component="isMaximized ? RestoreIcon : MaximizeIcon" :size="12" />
+            </template>
+          </NButton>
+          <NButton quaternary size="tiny" class="win-btn close-btn" @click="hideToTray()">
+            <template #icon>
+              <NIcon :component="CloseIcon" :size="12" />
+            </template>
+          </NButton>
+        </div>
+      </div>
+    </div>
 
-              <!-- Windows 端：自定义按钮 -->
-              <div class="window-controls win-controls" v-if="isWindows">
-                <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
-                  <template #icon>
-                    <NIcon :component="MinusIcon" :size="12" />
-                  </template>
-                </NButton>
-                <NButton quaternary size="tiny" class="win-btn" @click="toggleMaximize()">
-                  <template #icon>
-                    <NIcon :component="isMaximized ? RestoreIcon : MaximizeIcon" :size="12" />
-                  </template>
-                </NButton>
-                <NButton quaternary size="tiny" class="win-btn close-btn" @click="hideToTray()">
-                  <template #icon>
-                    <NIcon :component="CloseIcon" :size="12" />
-                  </template>
-                </NButton>
-              </div>
-            </div>
-          </div>
+    <!-- 精简模式下剪贴板操作栏 -->
+    <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clipboard-actions">
+      <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
+        <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
+      </button>
+    </div>
 
-          <!-- 精简模式下剪贴板操作栏（紧贴右侧，最小化占用） -->
-          <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clipboard-actions">
-            <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
-              <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
-            </button>
-          </div>
+    <!-- 侧边栏 + 内容区 -->
+    <div class="body-area">
+      <!-- 侧边栏 -->
+      <nav class="sidebar" @mousedown="startWindowDrag">
+        <!-- Mac 端：红黄绿按钮 -->
+        <div v-if="isMac" class="mac-window-controls">
+          <button class="mac-btn close" @click.stop="hideToTray()" title="关闭">
+            <span class="mac-btn-icon">×</span>
+          </button>
+          <button class="mac-btn minimize" @click.stop="appWindow.minimize()" title="最小化">
+            <span class="mac-btn-icon">−</span>
+          </button>
+          <button class="mac-btn maximize" @click.stop="toggleMaximize()" :title="isMaximized ? '还原' : '最大化'">
+            <span class="mac-btn-icon">＋</span>
+          </button>
+        </div>
 
-          <!-- 侧边栏 + 内容区 -->
-          <div class="body-area">
-            <!-- 侧边栏 -->
-            <nav class="sidebar">
-              <div class="sidebar-buttons">
-                <!-- 置顶按钮（第一个位置） -->
+        <div class="sidebar-buttons">
+          <!-- 置顶按钮（第一个位置） -->
                 <button
                   :class="['sidebar-btn', { active: isPinned }]"
                   @click="togglePin"
@@ -939,13 +938,13 @@ html.dark, html.dark body, html.dark #app {
   border-radius: 10px;
 }
 
-/* 全局 Header（最上方，极简） */
+/* 全局 Header（仅 Windows） */
 .global-header {
   position: relative;
   flex-shrink: 0;
   background: #f5f5f5;
   border-bottom: 1px solid #e0e0e0;
-  padding: 10px 12px;
+  padding: 8px 12px;
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
@@ -959,7 +958,7 @@ html.dark .global-header {
 .global-header .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -1037,16 +1036,27 @@ html.dark .mac-btn .mac-btn-icon {
   background: #e8e8e8;
   display: flex;
   flex-direction: column;
-  padding: 8px 0;
-  -webkit-app-region: drag;
-  app-region: drag;
   z-index: 10;
   border-right: 1px solid #d0d0d0;
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
 }
 
 html.dark .sidebar {
   background: #1a1a1a;
   border-right-color: #333;
+}
+
+/* Mac 端：侧边栏顶部红黄绿按钮区域 */
+.mac-window-controls {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0 6px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .sidebar-buttons {
@@ -1056,6 +1066,8 @@ html.dark .sidebar {
   gap: 4px;
   padding-top: 4px;
   flex: 1;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .sidebar-btn {
@@ -1132,7 +1144,7 @@ html.dark .sidebar-btn.active {
 /* 面板内分类 tabs 区域 */
 .panel-tabs {
   flex-shrink: 0;
-  padding-top: 4px;
+  padding-top: 0;
   padding-bottom: 0;
   cursor: default;
   -webkit-app-region: no-drag;
