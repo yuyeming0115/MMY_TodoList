@@ -1003,10 +1003,18 @@ html.dark .app-container {
   user-select: none;
 }
 
-/* Mac 原生装饰适配 */
+/* Mac overlay 标题栏适配（红绿灯悬浮在内容上，类似微信） */
+html.platform-mac .global-header {
+  padding-top: 36px;
+}
+
+html.platform-mac .sidebar {
+  padding-top: 36px;
+}
+
 html.platform-mac .header {
-  padding-left: 70px;
-  padding-top: 10px;
+  padding-left: 12px;
+  padding-top: 0;
 }
 
 html.platform-mac .app-container {
