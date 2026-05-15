@@ -629,10 +629,7 @@ async function hideToTray() {
           <!-- 全局 Header（最上方，极简） -->
           <div class="global-header">
             <div class="header" data-tauri-drag-region>
-              <!-- Mac 标题 -->
-              <span v-if="isMac" class="app-title">MMY Todo</span>
-
-              <!-- 窗口控制按钮 -->
+              <!-- 窗口控制按钮（仅 Windows） -->
               <div class="window-controls win-controls" v-if="isWindows">
                 <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
                   <template #icon>
@@ -940,20 +937,6 @@ html.dark .global-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-/* Mac 标题 */
-.app-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #666;
-  -webkit-app-region: drag;
-  app-region: drag;
-  user-select: none;
-}
-
-html.dark .app-title {
-  color: #999;
 }
 
 /* 侧边栏 + 内容区 */
