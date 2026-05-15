@@ -9,6 +9,7 @@ import {
   deleteClipboardItem, reorderClipboardItems
 } from '../utils/db';
 import { FREE_CATEGORY_LIMIT, BUILTIN_CLIPBOARD_CATEGORY_META, BUILTIN_CLIPBOARD_CATEGORIES, isBuiltinClipboardCategory } from '../types';
+import { useSettingsStore } from './settingsStore';
 
 export const useClipboardStore = defineStore('clipboard', () => {
   const categories = ref<ClipboardCategory[]>([]);
@@ -16,6 +17,12 @@ export const useClipboardStore = defineStore('clipboard', () => {
   const selectedCategoryId = ref<string | null>(null);
   const loading = ref(false);
   const searchQuery = ref('');
+
+  // 从 settingsStore 同步排序模式
+  const sortMode = computed(() => {
+    const settingsStore = useSettingsStore();
+    return settingsStore.settings.clipboardSortMode || 'custom';
+  });
 
   // 内置分类（始终存在，不可删除）
   const builtinCategories = computed(() =>
@@ -46,7 +53,19 @@ export const useClipboardStore = defineStore('clipboard', () => {
       );
     }
 
-    list.sort((a, b) => a.sortOrder - b.sortOrder);
+    // 根据排序模式排序
+    const mode = sortMode.value;
+    if (mode === 'name') {
+      // 按名字升序（A→Z）
+      list.sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+    } else if (mode === 'createdAt') {
+      // 按创建时间降序（最新在前）
+      list.sort((a, b) => b.createdAt - a.createdAt);
+    } else {
+      // 自定义排序：按 sortOrder
+      list.sort((a, b) => a.sortOrder - b.sortOrder);
+    }
+
     return list;
   });
 
@@ -379,12 +398,41 @@ export const useClipboardStore = defineStore('clipboard', () => {
     message?.warning('剪贴板为空');
   }
 
+  // 设置排序模式
+  async function setSortMode(mode: 'custom' | 'name' | 'createdAt') {
+    const settingsStore = useSettingsStore();
+
+    if (mode !== 'custom' && sortMode.value === 'custom') {
+      // 切换到自动排序前，备份当前的 sortOrder
+      const backup: Record<string, number> = {};
+      items.value.forEach(i => { backup[i.id] = i.sortOrder; });
+      settingsStore.setClipboardSortBackup(backup);
+    }
+
+    if (mode === 'custom' && sortMode.value !== 'custom') {
+      // 切换回自定义排序时，从备份恢复 sortOrder
+      const backup = settingsStore.settings.clipboardSortBackup;
+      if (backup) {
+        for (const item of items.value) {
+          if (backup[item.id] !== undefined) {
+            item.sortOrder = backup[item.id];
+            await updateClipboardItem(item);
+          }
+        }
+        await load();
+      }
+    }
+
+    settingsStore.setClipboardSortMode(mode);
+  }
+
   return {
     categories,
     items,
     selectedCategoryId,
     loading,
     searchQuery,
+    sortMode,
     builtinCategories,
     customCategories,
     canAddMore,
@@ -412,5 +460,6 @@ export const useClipboardStore = defineStore('clipboard', () => {
     toggleCategoryLock,
     isItemInLockedCategory,
     isItemLocked,
+    setSortMode,
   };
 });

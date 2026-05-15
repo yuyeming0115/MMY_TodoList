@@ -169,5 +169,6 @@ export default {
     custom: '自定义排序',
     name: '按名字排序',
     updatedAt: '按修改日期排序',
+    createdAt: '按创建时间排序',
   },
 };

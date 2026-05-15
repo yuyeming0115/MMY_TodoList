@@ -42,6 +42,8 @@ export interface AppSettings {
   globalShortcut?: string; // 全局快捷键（如 "Ctrl+Alt+D")
   taskSortMode?: 'custom' | 'name' | 'updatedAt'; // 任务排序模式
   customSortBackup?: Record<string, number>; // 切换排序时保存的 sortOrder 备份
+  clipboardSortMode?: 'custom' | 'name' | 'createdAt'; // 剪贴板排序模式
+  clipboardSortBackup?: Record<string, number>; // 剪贴板排序备份
 }
 
 export interface ExportData {

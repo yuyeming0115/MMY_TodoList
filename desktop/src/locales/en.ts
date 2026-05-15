@@ -169,5 +169,6 @@ export default {
     custom: 'Custom Order',
     name: 'Sort by Name',
     updatedAt: 'Sort by Modified',
+    createdAt: 'Sort by Created',
   },
 };

@@ -230,9 +230,21 @@ const filteredItems = computed(() => {
     );
   }
 
-  items.sort((a, b) => a.sortOrder - b.sortOrder);
+  // 根据排序模式排序
+  const mode = clipboardStore.sortMode;
+  if (mode === 'name') {
+    items.sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+  } else if (mode === 'createdAt') {
+    items.sort((a, b) => b.createdAt - a.createdAt);
+  } else {
+    items.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
   return items;
 });
+
+// 拖拽是否启用（仅在自定义排序模式下）
+const dragEnabled = computed(() => clipboardStore.sortMode === 'custom');
 
 // 同步到拖拽列表
 watch(filteredItems, (val) => {
@@ -341,6 +353,7 @@ function cancelEdit() {
     <draggable
       v-else
       v-model="dragList"
+      :disabled="!dragEnabled"
       item-key="id"
       ghost-class="ghost"
       chosen-class="chosen"

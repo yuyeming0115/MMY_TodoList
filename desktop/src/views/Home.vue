@@ -433,6 +433,24 @@ function handleSortSelect(key: 'custom' | 'name' | 'updatedAt') {
   taskStore.setSortMode(key);
 }
 
+// 剪贴板排序
+const clipboardSortModeOptions = computed(() => [
+  { label: t('sort.custom'), key: 'custom' },
+  { label: t('sort.name'), key: 'name' },
+  { label: t('sort.createdAt'), key: 'createdAt' },
+]);
+
+const clipboardSortModeLabel = computed(() => {
+  const mode = clipboardStore.sortMode;
+  if (mode === 'name') return t('sort.name');
+  if (mode === 'createdAt') return t('sort.createdAt');
+  return t('sort.custom');
+});
+
+function handleClipboardSortSelect(key: 'custom' | 'name' | 'createdAt') {
+  clipboardStore.setSortMode(key);
+}
+
 // 剪贴板视图切换
 const isClipboardStacked = computed(() => settingsStore.settings.clipboardViewMode === 'stacked');
 
@@ -705,6 +723,15 @@ async function hideToTray() {
                 <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
                   <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
                 </button>
+                <NDropdown
+                  placement="bottom-end"
+                  :options="clipboardSortModeOptions"
+                  @select="handleClipboardSortSelect"
+                >
+                  <button class="view-toggle-btn" :title="clipboardSortModeLabel">
+                    <NIcon :component="SortIcon" size="16" />
+                  </button>
+                </NDropdown>
                 <NButton
                   type="primary" size="small"
                   @click="handlePasteClipboard"
