@@ -935,11 +935,7 @@ html.dark, html.dark body, html.dark #app {
   height: 100vh;
   overflow: hidden;
   border-radius: 10px;
-  background: #f5f5f5;
-}
-
-html.dark .app-layout {
-  background: #1a1a1a;
+  background: transparent;
 }
 
 /* 全局 Header（仅 Windows） */
@@ -1037,19 +1033,14 @@ html.dark .mac-btn .mac-btn-icon {
 .sidebar {
   width: 68px;
   flex-shrink: 0;
-  background: #e8e8e8;
+  background: rgba(30, 30, 30, 0.65);
   display: flex;
   flex-direction: column;
   z-index: 10;
-  border-right: 1px solid #d0d0d0;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
-}
-
-html.dark .sidebar {
-  background: #1a1a1a;
-  border-right-color: #333;
 }
 
 /* Mac 端：侧边栏顶部红黄绿按钮区域 */
@@ -1139,6 +1130,11 @@ html.dark .sidebar-btn.active {
   overflow: hidden;
   min-height: 0;
   padding: 0 12px;
+  background: #f5f5f5;
+}
+
+html.dark .panel {
+  background: #1a1a1a;
 }
 
 .panel.compact-panel {

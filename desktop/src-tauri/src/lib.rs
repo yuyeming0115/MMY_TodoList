@@ -67,6 +67,15 @@ pub fn run() {
             // 初始化系统托盘
             setup_tray(app)?;
 
+            // Mac 端：设置窗口背景为毛玻璃效果（Sidebar 材质）
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(win) = app.get_webview_window("main") {
+                    window_vibrancy::apply_vibrancy(&win, window_vibrancy::NSVisualEffectMaterial::Sidebar, None, None)
+                        .ok();
+                }
+            }
+
             // 监听窗口关闭事件，改为隐藏到托盘（同时备份）
             let app_handle = app.handle().clone();
             let backup_for_hide = backup_arc.clone();
