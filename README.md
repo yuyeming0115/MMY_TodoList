@@ -32,4 +32,4 @@ npm run tauri dev
 - 窗口置顶与窗口尺寸/位置记忆
 - 剪贴板管理（自动监控+手动保存，支持文本和图像分类）
 
-详见 [desktop/README.md](desktop/README.md) 和 [开发文档/开发说明.md](开发文档/开发说明.md)
+详见 [CHANGELOG.md](CHANGELOG.md)、[desktop/README.md](desktop/README.md) 和 [开发文档/开发说明.md](开发文档/开发说明.md)

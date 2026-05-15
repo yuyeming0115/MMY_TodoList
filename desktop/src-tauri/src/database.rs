@@ -73,6 +73,15 @@ impl Database {
             [],
         )?;
 
+        // 添加 window_width, window_height 列（如果不存在）
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN window_width INTEGER",
+            [],
+        ).ok();
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN window_height INTEGER",
+            [],
+        ).ok();
         // 添加 window_x, window_y 列（如果不存在）
         conn.execute(
             "ALTER TABLE settings ADD COLUMN window_x INTEGER",
