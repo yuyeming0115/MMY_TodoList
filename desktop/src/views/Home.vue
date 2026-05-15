@@ -689,6 +689,14 @@ async function hideToTray() {
             <!-- 第二行：搜索栏 -->
             <div v-if="!isPinned" class="search-wrapper">
               <div v-if="activePanel === 'tasks'" class="task-search-row">
+                <NButton
+                  type="primary" size="small"
+                  @click="openAddTask"
+                  class="search-action-btn"
+                >
+                  <template #icon><NIcon :component="AddIcon" /></template>
+                  {{ t('header.task') }}
+                </NButton>
                 <SearchBar />
                 <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
                   <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
@@ -702,16 +710,16 @@ async function hideToTray() {
                     <NIcon :component="SortIcon" size="16" />
                   </button>
                 </NDropdown>
-                <NButton
-                  type="primary" size="small"
-                  @click="openAddTask"
-                  class="search-action-btn"
-                >
-                  <template #icon><NIcon :component="AddIcon" /></template>
-                  {{ t('header.task') }}
-                </NButton>
               </div>
               <div v-else-if="activePanel === 'clipboard'" class="clipboard-search-row">
+                <NButton
+                  type="primary" size="small"
+                  @click="handlePasteClipboard"
+                  class="search-action-btn"
+                >
+                  <template #icon><NIcon :component="CopyIcon" /></template>
+                  {{ t('header.paste') }}
+                </NButton>
                 <NInput
                   v-model:value="clipboardSearchQuery"
                   :placeholder="t('header.searchClipboard')"
@@ -732,14 +740,6 @@ async function hideToTray() {
                     <NIcon :component="SortIcon" size="16" />
                   </button>
                 </NDropdown>
-                <NButton
-                  type="primary" size="small"
-                  @click="handlePasteClipboard"
-                  class="search-action-btn"
-                >
-                  <template #icon><NIcon :component="CopyIcon" /></template>
-                  {{ t('header.paste') }}
-                </NButton>
               </div>
             </div>
 
@@ -1255,7 +1255,7 @@ html.dark .view-toggle-btn:hover {
 
 .search-action-btn {
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-right: 8px;
 }
 
 /* 精简模式下剪贴板操作栏 — 紧贴右侧，最小化占用 */
