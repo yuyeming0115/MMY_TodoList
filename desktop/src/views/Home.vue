@@ -619,28 +619,6 @@ async function hideToTray() {
                 >{{ cat.name === '文本' || cat.name === 'Text' ? t('compact.text') : cat.name === '图像' || cat.name === 'Image' ? t('compact.image') : t('compact.star') }}</button>
               </div>
 
-              <!-- 任务面板：添加任务按钮 -->
-              <NButton
-                v-if="activePanel === 'tasks' && !isPinned"
-                type="primary" size="tiny" round
-                @click="openAddTask"
-                class="header-action-btn"
-              >
-                <template #icon><NIcon :component="AddIcon" /></template>
-                {{ t('header.addTask') }}
-              </NButton>
-
-              <!-- 剪贴板面板：从剪贴板粘贴按钮 -->
-              <NButton
-                v-else-if="activePanel === 'clipboard' && !isPinned"
-                type="primary" size="tiny" round
-                @click="handlePasteClipboard"
-                class="header-action-btn"
-              >
-                <template #icon><NIcon :component="CopyIcon" /></template>
-                {{ t('header.paste') }}
-              </NButton>
-
               <!-- 窗口控制按钮 -->
               <div class="window-controls win-controls" v-if="isWindows">
                 <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
@@ -668,6 +646,14 @@ async function hideToTray() {
                 <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
                   <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
                 </button>
+                <NButton
+                  type="primary" size="tiny" round
+                  @click="openAddTask"
+                  class="search-action-btn"
+                >
+                  <template #icon><NIcon :component="AddIcon" /></template>
+                  {{ t('header.addTask') }}
+                </NButton>
               </div>
               <div v-else-if="activePanel === 'clipboard'" class="clipboard-search-row">
                 <NInput
@@ -681,6 +667,14 @@ async function hideToTray() {
                 <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
                   <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
                 </button>
+                <NButton
+                  type="primary" size="tiny" round
+                  @click="handlePasteClipboard"
+                  class="search-action-btn"
+                >
+                  <template #icon><NIcon :component="CopyIcon" /></template>
+                  {{ t('header.paste') }}
+                </NButton>
               </div>
             </div>
 
@@ -1192,6 +1186,11 @@ html.dark .view-toggle-btn {
 html.dark .view-toggle-btn:hover {
   background: rgba(100, 100, 100, 0.3);
   color: #4A90D9;
+}
+
+.search-action-btn {
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 /* 精简模式下剪贴板操作栏 — 紧贴右侧，最小化占用 */
