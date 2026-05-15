@@ -131,10 +131,14 @@ impl Database {
                 name TEXT NOT NULL,
                 color TEXT NOT NULL,
                 sort_order INTEGER DEFAULT 0,
-                created_at INTEGER
+                created_at INTEGER,
+                locked INTEGER DEFAULT 0
             )",
             [],
         )?;
+
+        // 迁移：为已有数据库添加新列
+        conn.execute("ALTER TABLE clipboard_categories ADD COLUMN locked INTEGER DEFAULT 0", []).ok();
 
         // 创建剪贴板项目表
         conn.execute(
@@ -556,7 +560,7 @@ impl Database {
     pub fn get_clipboard_categories(&self) -> SqliteResult<Vec<ClipboardCategory>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, color, sort_order, created_at FROM clipboard_categories ORDER BY sort_order"
+            "SELECT id, name, color, sort_order, created_at, locked FROM clipboard_categories ORDER BY sort_order"
         )?;
 
         let categories = stmt.query_map([], |row| {
@@ -566,6 +570,7 @@ impl Database {
                 color: row.get(2)?,
                 sort_order: row.get(3)?,
                 created_at: row.get(4)?,
+                locked: row.get::<_, Option<i32>>(5)?.map(|v| v != 0),
             })
         })?.collect::<SqliteResult<Vec<ClipboardCategory>>>();
 
@@ -583,8 +588,8 @@ impl Database {
         )?;
 
         conn.execute(
-            "INSERT INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            [&category.id, &category.name, &category.color, &max_order.to_string(), &category.created_at.to_string()],
+            "INSERT INTO clipboard_categories (id, name, color, sort_order, created_at, locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            [&category.id, &category.name, &category.color, &max_order.to_string(), &category.created_at.to_string(), "0"],
         )?;
 
         Ok(category)
@@ -594,8 +599,15 @@ impl Database {
     pub fn import_clipboard_category(&self, category: &ClipboardCategory) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT OR REPLACE INTO clipboard_categories (id, name, color, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            [&category.id, &category.name, &category.color, &category.sort_order.to_string(), &category.created_at.to_string()],
+            "INSERT OR REPLACE INTO clipboard_categories (id, name, color, sort_order, created_at, locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                &category.id,
+                &category.name,
+                &category.color,
+                &category.sort_order,
+                &category.created_at,
+                category.locked.map(|v| if v { 1 } else { 0 }),
+            ],
         )?;
         Ok(())
     }
@@ -603,8 +615,14 @@ impl Database {
     pub fn update_clipboard_category(&self, category: &ClipboardCategory) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE clipboard_categories SET name = ?1, color = ?2, sort_order = ?3 WHERE id = ?4",
-            [&category.name, &category.color, &category.sort_order.to_string(), &category.id],
+            "UPDATE clipboard_categories SET name = ?1, color = ?2, sort_order = ?3, locked = ?4 WHERE id = ?5",
+            rusqlite::params![
+                &category.name,
+                &category.color,
+                &category.sort_order,
+                category.locked.map(|v| if v { 1 } else { 0 }),
+                &category.id,
+            ],
         )?;
         Ok(())
     }

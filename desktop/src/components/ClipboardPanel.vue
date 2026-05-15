@@ -133,12 +133,12 @@ function selectAll() {
   if (!selectMode.value) selectMode.value = true;
 }
 
-// 批量删除（过滤锁定卡片，只删除非锁定的选中项）
+// 批量删除（过滤锁定卡片，包括卡片级别和分类级别锁定）
 async function deleteSelected() {
-  // 过滤出非锁定的选中项
+  // 过滤出非锁定的选中项（同时检查卡片级别和分类级别）
   const ids = [...selectedIds.value].filter(id => {
     const item = clipboardStore.items.find(i => i.id === id);
-    return item && !item.locked;
+    return item && !clipboardStore.isItemLocked(item);
   });
 
   if (ids.length === 0) {

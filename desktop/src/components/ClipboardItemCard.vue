@@ -56,7 +56,7 @@ onUnmounted(() => {
 });
 
 const isFavorite = computed(() => props.item.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
-const isLocked = computed(() => props.item.locked === true);
+const isLocked = computed(() => clipboardStore.isItemLocked(props.item));
 const isTextItem = computed(() => !props.item.imageBase64 && !props.item.imagePath);
 const isBuiltinCategory = computed(() =>
   ([BUILTIN_CLIPBOARD_CATEGORIES.TEXT, BUILTIN_CLIPBOARD_CATEGORIES.IMAGE] as string[]).includes(props.item.categoryId)

@@ -136,6 +136,42 @@ export const useClipboardStore = defineStore('clipboard', () => {
     if (index !== -1) categories.value[index] = category;
   }
 
+  // 锁定/解锁分类
+  async function lockCategory(category: ClipboardCategory): Promise<void> {
+    category.locked = true;
+    await updateClipboardCategory(category);
+    const index = categories.value.findIndex(c => c.id === category.id);
+    if (index !== -1) categories.value[index] = category;
+  }
+
+  async function unlockCategory(category: ClipboardCategory): Promise<void> {
+    category.locked = false;
+    await updateClipboardCategory(category);
+    const index = categories.value.findIndex(c => c.id === category.id);
+    if (index !== -1) categories.value[index] = category;
+  }
+
+  async function toggleCategoryLock(category: ClipboardCategory): Promise<'locked' | 'unlocked'> {
+    if (category.locked) {
+      await unlockCategory(category);
+      return 'unlocked';
+    } else {
+      await lockCategory(category);
+      return 'locked';
+    }
+  }
+
+  // 检查卡片是否在锁定分类下
+  function isItemInLockedCategory(item: ClipboardItem): boolean {
+    const category = categories.value.find(c => c.id === item.categoryId);
+    return category?.locked === true;
+  }
+
+  // 检查卡片是否锁定（卡片级别或分类级别）
+  function isItemLocked(item: ClipboardItem): boolean {
+    return item.locked === true || isItemInLockedCategory(item);
+  }
+
   async function removeCategory(id: string) {
     if (isBuiltinClipboardCategory(id)) {
       return;
@@ -371,5 +407,10 @@ export const useClipboardStore = defineStore('clipboard', () => {
     lockItem,
     unlockItem,
     toggleItemLock,
+    lockCategory,
+    unlockCategory,
+    toggleCategoryLock,
+    isItemInLockedCategory,
+    isItemLocked,
   };
 });

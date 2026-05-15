@@ -6,7 +6,7 @@ import type { ClipboardCategory } from '../types';
 import { NDropdown, useMessage, useDialog, type DropdownOption } from 'naive-ui';
 import { h } from 'vue';
 import { NIcon } from 'naive-ui';
-import { CreateOutline as EditIcon, TrashOutline as DeleteIcon, StarOutline as StarIcon } from '@vicons/ionicons5';
+import { CreateOutline as EditIcon, TrashOutline as DeleteIcon, StarOutline as StarIcon, LockClosedOutline as LockIcon } from '@vicons/ionicons5';
 import { FREE_CATEGORY_LIMIT, isBuiltinClipboardCategory, BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 
 const store = useClipboardStore();
@@ -86,21 +86,19 @@ function handleTabContextMenu(e: MouseEvent, cat: ClipboardCategory) {
 // 右键菜单选项：内置分类不显示删除
 const contextMenuOptions = (cat: ClipboardCategory): DropdownOption[] => {
   const isBuiltin = isBuiltinClipboardCategory(cat.id);
-  if (isBuiltin) {
-    return [
-      { label: '编辑名称', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
-      { label: '设置颜色', key: 'color' },
-    ];
-  }
-  return [
+  const options: DropdownOption[] = [
     { label: '编辑名称', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
     { label: '设置颜色', key: 'color' },
-    { type: 'divider', key: 'd1' },
-    { label: '删除分类', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 14, style: { color: '#E05252' } }) },
+    { label: cat.locked ? '解锁分类' : '锁定分类', key: 'lock', icon: () => h(NIcon, { component: LockIcon, size: 14, style: { color: cat.locked ? '#E05252' : '#333' } }) },
   ];
+  if (!isBuiltin) {
+    options.push({ type: 'divider', key: 'd1' });
+    options.push({ label: '删除分类', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 14, style: { color: '#E05252' } }) });
+  }
+  return options;
 };
 
-function handleContextMenuSelect(key: string) {
+async function handleContextMenuSelect(key: string) {
   contextMenuShow.value = false;
   if (!contextMenuCat.value) return;
   const cat = contextMenuCat.value;
@@ -109,6 +107,9 @@ function handleContextMenuSelect(key: string) {
     startInlineEdit(cat);
   } else if (key === 'color') {
     colorPickerShow.value = true;
+  } else if (key === 'lock') {
+    const result = await store.toggleCategoryLock(cat);
+    message.success(result === 'locked' ? '分类已锁定，该分类下所有卡片禁止删除' : '分类已解锁');
   } else if (key === 'delete') {
     deleteCategory(cat);
   }
@@ -252,6 +253,7 @@ onUnmounted(() => {
             />
           </template>
           <template v-else>
+            <span v-if="element.locked" style="margin-right: 4px;">🔒</span>
             <span :style="element.color ? { color: element.color } : {}">{{ element.name }}</span>
           </template>
         </button>
@@ -278,10 +280,11 @@ onUnmounted(() => {
           />
         </template>
         <template v-else>
-          <span :style="cat.color ? { color: cat.color } : {}">{{ cat.name }}</span>
-        </template>
-      </button>
-    </template>
+        <span v-if="cat.locked" style="margin-right: 4px;">🔒</span>
+        <span :style="cat.color ? { color: cat.color } : {}">{{ cat.name }}</span>
+      </template>
+    </button>
+  </template>
 
     <!-- 添加分类按钮 -->
     <button

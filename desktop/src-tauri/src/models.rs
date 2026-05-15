@@ -119,6 +119,7 @@ pub struct ClipboardCategory {
     pub color: String,
     pub sort_order: i32,
     pub created_at: i64,
+    pub locked: Option<bool>, // 是否锁定（该分类下所有卡片禁止删除）
 }
 
 impl ClipboardCategory {
@@ -129,6 +130,7 @@ impl ClipboardCategory {
             color,
             sort_order: 0,
             created_at: Utc::now().timestamp_millis(),
+            locked: None,
         }
     }
 }
