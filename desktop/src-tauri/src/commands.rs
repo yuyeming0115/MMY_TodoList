@@ -232,6 +232,7 @@ pub fn add_clipboard_item(db: State<'_, Arc<Database>>, item: NewClipboardItem) 
         sort_order: item.sort_order,
         created_at: now,
         expires_at: item.expires_at,
+        locked: None,
     };
     db.add_clipboard_item(&full_item).map_err(|e| e.to_string())?;
     Ok(full_item)
