@@ -41,18 +41,20 @@
 ```
 
 ### 说明
-- **Mac 端**：`titleBarStyle: overlay` 模式下，红黄绿按钮自然出现在左上角，标题由系统显示，
-  header 区域只保留足够的高度（约 40px）给红黄绿按钮留出空间
-- **Windows 端**：header 右侧显示最小化 / 最大化 / 关闭按钮
+- **Mac 端**：`decorations: false` 完全隐藏系统标题栏，用 CSS 自定义红黄绿按钮（左对齐），
+  窗口圆角通过 `.app-layout` 的 `border-radius: 10px` 实现
+- **Windows 端**：同样 `decorations: false`，自定义按钮右对齐
 
 ## 变更细节
 
-### 1. header 精简
-- **文件**: `desktop/src/views/Home.vue`
+### 1. header 精简 + 自定义窗口按钮
+- **文件**: `desktop/src/views/Home.vue`、`desktop/src-tauri/tauri.conf.json`
+- 将 `decorations` 改为 `false`，完全隐藏系统标题栏
 - 移除分类 tabs 和搜索栏，header 区域极简
-  - Mac 端：依靠 `titleBarStyle: overlay` 显示系统标题和红黄绿按钮
-  - Windows 端：右侧显示最小化 / 最大化 / 关闭按钮
-- 高度从约 60px 减少到约 40px
+  - Mac 端：自定义红黄绿三个圆点按钮（左对齐，hover 显示 ×−+ 符号）
+  - Windows 端：自定义最小化/最大化/关闭按钮（右对齐）
+- 窗口拖拽通过 header 区域的 `@mousedown` + `appWindow.startDragging()` 实现
+- 高度约 32px
 
 ### 2. 分类 tabs 移入内容区
 - 任务面板的 `<CategoryTabs />` 移入 `.tasks-panel` 内
@@ -69,9 +71,12 @@
 - 精简模式下，tabs 和搜索行通过 CSS `display: none` 隐藏
 - 剪贴板的迷你分类切换器（pill 按钮）移至内容区内显示
 
-### 5. Mac overlay 适配
-- `padding-top` 从 36px 调整为 40px，适配新的 header 高度
-- 侧边栏 `padding-top` 同步调整
+### 5. Mac 自定义按钮
+- `decorations: false` 替代原有的 `titleBarStyle: overlay`
+- 红黄绿按钮使用纯 CSS 绘制，颜色分别为 `#FF5F57`（红）、`#FFBD2E`（黄）、`#28C840`（绿）
+- 鼠标悬停整个按钮组时，显示对应的操作符号（× / − / +）
+- 点击 × 按钮执行 `hideToTray()`（隐藏到托盘，非真正关闭）
+- 窗口圆角由 `.app-layout` 的 `border-radius: 10px` 实现
 
 ## 涉及文件
 
@@ -86,15 +91,16 @@
 - 分类右键菜单（重命名、颜色、锁定、删除）
 - 任务拖拽排序
 - 窗口置顶 + 精简模式
-- Mac 的 `overlay` 标题栏模式
+- Mac 端自定义红黄绿按钮
 
 ## 测试验证
 
 1. 启动开发服务器：`npm run tauri dev`
 2. 确认分类 tabs 在内容区正确显示
 3. 确认搜索栏在内容区正确显示
-4. 确认 Mac 端 overlay 模式下红黄绿按钮正确显示在左上角
-5. 确认 Windows 端窗口控制按钮正常工作
+4. 确认 Mac 端自定义红黄绿按钮正确显示（hover 显示符号）
+5. 确认 Mac 端窗口拖拽正常（点击 header 空白区域）
+6. 确认 Windows 端窗口控制按钮正常工作
 6. 确认拖拽排序功能正常
 7. 确认窗口拖拽功能正常
 8. 确认剪贴板面板的 tabs 和搜索正常工作
