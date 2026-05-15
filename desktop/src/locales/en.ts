@@ -3,6 +3,8 @@ export default {
   sidebar: {
     tasks: 'Tasks',
     clipboard: 'Clipboard',
+    pin: 'Pin',
+    unpin: 'Unpin',
     toggleTheme: 'Toggle Theme',
     toggleLanguage: 'Toggle Language',
     settings: 'Settings',

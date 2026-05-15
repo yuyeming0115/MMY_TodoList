@@ -3,6 +3,8 @@ export default {
   sidebar: {
     tasks: '任务',
     clipboard: '剪贴板',
+    pin: '置顶',
+    unpin: '取消置顶',
     toggleTheme: '切换主题',
     toggleLanguage: '切换语言',
     settings: '设置',

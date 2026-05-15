@@ -594,13 +594,6 @@ async function hideToTray() {
           <!-- 全局 Header（最上方，全宽） -->
           <div class="global-header" @mousedown="startWindowDrag">
             <div class="header" data-tauri-drag-region>
-              <!-- 置顶按钮（始终显示） -->
-              <div class="pin-control">
-                <NButton quaternary size="tiny" @click="togglePin" :type="isPinned ? 'primary' : 'default'" round>
-                  <span class="pin-emoji">📌</span>
-                </NButton>
-              </div>
-
               <!-- 任务面板：分类 tabs -->
               <div v-if="activePanel === 'tasks' && !isPinned" class="tabs-wrapper" @mousedown="startTabsDrag">
                 <CategoryTabs />
@@ -704,6 +697,14 @@ async function hideToTray() {
             <!-- 侧边栏 -->
             <nav class="sidebar">
               <div class="sidebar-buttons">
+                <!-- 置顶按钮（第一个位置） -->
+                <button
+                  :class="['sidebar-btn', { active: isPinned }]"
+                  @click="togglePin"
+                  :title="isPinned ? t('sidebar.unpin') : t('sidebar.pin')"
+                >
+                  📌
+                </button>
                 <button
                   :class="['sidebar-btn', { active: activePanel === 'tasks' && currentPage === 'main' }]"
                   @click="switchPanel('tasks')"
