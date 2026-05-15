@@ -142,14 +142,10 @@ export default {
     openFolderFailed: '打开文件夹失败',
     favoriteCategoryNotFound: '收藏分类不存在，请刷新后重试',
     // 选择模式
-    selected: '已选 {count} / {total}',
-    selectAll: '全选',
-    deleteSelectedBtn: '删除选中',
     favoriteSelected: '已收藏 {count} 项',
-    exitSelectMode: '退出',
-    confirmDeleteSelected: '确定删除选中的 {count} 项吗？',
     favoriteCannotDelete: '收藏卡不能被删除',
     favoriteExcludedFromDelete: '已排除 {count} 个收藏卡不删除',
+    deleteSelected: '已删除 {count} 项',
   },
   // 分类相关
   category: {

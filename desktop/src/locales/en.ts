@@ -142,14 +142,10 @@ export default {
     openFolderFailed: 'Failed to open folder',
     favoriteCategoryNotFound: 'Favorite category not found, please refresh',
     // 选择模式
-    selected: 'Selected {count} / {total}',
-    selectAll: 'Select All',
-    deleteSelectedBtn: 'Delete Selected',
     favoriteSelected: 'Favorited {count} items',
-    exitSelectMode: 'Exit',
-    confirmDeleteSelected: 'Delete {count} selected items?',
     favoriteCannotDelete: 'Favorite cards cannot be deleted',
     favoriteExcludedFromDelete: '{count} favorite cards excluded from deletion',
+    deleteSelected: 'Deleted {count} items',
   },
   // 分类相关
   category: {

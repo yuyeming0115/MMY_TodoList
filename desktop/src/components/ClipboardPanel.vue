@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, h, onMounted, onUnmounted } from 'vue';
-import { NDropdown, NIcon, NInput, NPopconfirm, useMessage } from 'naive-ui';
-import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon } from '@vicons/ionicons5';
+import { NDropdown, NIcon, NInput, useMessage } from 'naive-ui';
+import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import { useI18n } from '../composables/useI18n';
@@ -37,15 +37,6 @@ const selectMode = ref(false);
 const selectedIds = ref(new Set<string>());
 const selectionAnchor = ref<string | null>(null); // Shift 连选的锚点
 
-// 切换选择模式
-function toggleSelectMode() {
-  selectMode.value = !selectMode.value;
-  if (!selectMode.value) {
-    selectedIds.value = new Set();
-    selectionAnchor.value = null;
-  }
-}
-
 // 切换单个选中（允许选中收藏卡用于移动操作）
 function toggleSelect(id: string, isShift: boolean) {
   if (isShift && selectionAnchor.value) {
@@ -77,12 +68,24 @@ function enterSelectModeFromCard() {
   }
 }
 
-// ESC 键退出选择模式
+// 快捷键处理：A全选，ESC第1次清空，ESC第2次退出
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && (selectMode.value || selectedIds.value.size > 0)) {
-    selectMode.value = false;
-    selectedIds.value = new Set();
-    selectionAnchor.value = null;
+  // A键全选（在选择模式下）
+  if ((e.key === 'a' || e.key === 'A') && (selectMode.value || selectedIds.value.size > 0)) {
+    selectAll();
+    return;
+  }
+
+  // ESC键处理
+  if (e.key === 'Escape') {
+    if (selectedIds.value.size > 0) {
+      // 第1次ESC：清空选中
+      selectedIds.value = new Set();
+      selectionAnchor.value = null;
+    } else if (selectMode.value) {
+      // 第2次ESC（已清空状态）：退出选择模式
+      selectMode.value = false;
+    }
   }
 }
 
@@ -310,28 +313,6 @@ function cancelEdit() {
 
 <template>
   <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" :style="stackStyle">
-    <!-- 选择工具栏 -->
-    <div v-if="selectMode || selectedIds.size > 0" class="selection-toolbar">
-      <span class="selection-count">{{ t('messages.selected', { count: selectedIds.size, total: filteredItems.length }) }}</span>
-      <button class="toolbar-btn" @click="selectAll" :disabled="selectedIds.size === filteredItems.length" :title="t('messages.selectAll')">
-        <NIcon :component="CheckAllIcon" size="16" />
-        {{ t('messages.selectAll') }}
-      </button>
-      <NPopconfirm @positive-click="deleteSelected">
-        <template #trigger>
-          <button class="toolbar-btn danger" :disabled="selectedIds.size === 0" :title="t('messages.deleteSelectedBtn')">
-            <NIcon :component="DeleteIcon" size="16" />
-            {{ t('messages.deleteSelectedBtn') }}
-          </button>
-        </template>
-        {{ t('messages.confirmDeleteSelected', { count: selectedIds.size }) }}
-      </NPopconfirm>
-      <button class="toolbar-btn" @click="toggleSelectMode" :title="t('messages.exitSelectMode')">
-        <NIcon :component="CloseIcon" size="14" />
-        {{ t('messages.exitSelectMode') }}
-      </button>
-    </div>
-
     <div v-if="filteredItems.length === 0" class="empty">
       {{ t('empty.noClipboard') }}
     </div>
@@ -420,90 +401,6 @@ function cancelEdit() {
 </template>
 
 <style scoped>
-.selection-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  background: #f0f5ff;
-  border: 1px solid #d0e0f5;
-  border-radius: 10px;
-  flex-shrink: 0;
-}
-
-html.dark .selection-toolbar {
-  background: #1e2a3a;
-  border-color: #2a3a4a;
-}
-
-.selection-count {
-  font-size: 13px;
-  font-weight: 600;
-  color: #4A90D9;
-  margin-right: auto;
-}
-
-.toolbar-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 12px;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px;
-  background: #fff;
-  color: #333;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.toolbar-btn:hover:not(:disabled) {
-  background: #4A90D9;
-  border-color: #4A90D9;
-  color: #fff;
-}
-
-.toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.toolbar-btn.danger {
-  color: #E05252;
-  border-color: #E05252;
-}
-
-.toolbar-btn.danger:hover:not(:disabled) {
-  background: #E05252;
-  color: #fff;
-}
-
-html.dark .toolbar-btn {
-  background: #2a2a2a;
-  border-color: #444;
-  color: #ccc;
-}
-
-html.dark .toolbar-btn:hover:not(:disabled) {
-  background: #4A90D9;
-  border-color: #4A90D9;
-  color: #fff;
-}
-
-html.dark .toolbar-btn.danger {
-  color: #E05252;
-  border-color: #E05252;
-}
-
-html.dark .toolbar-btn.danger:hover:not(:disabled) {
-  background: #E05252;
-  color: #fff;
-}
-
 .clipboard-list {
   flex: 1;
   min-height: 0;
