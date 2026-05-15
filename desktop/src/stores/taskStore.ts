@@ -3,11 +3,18 @@ import { ref } from 'vue';
 import type { Task } from '../types';
 import { getTasks, addTask, updateTask, deleteTask, reorderTasks, resetTaskSort } from '../utils/db';
 import { FREE_TASK_PER_CATEGORY_LIMIT } from '../types';
+import { useCategoryStore } from './categoryStore';
 
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<Task[]>([]);
   const searchQuery = ref('');
   const loading = ref(false);
+
+  // 检查任务是否在锁定分类下
+  function isTaskLocked(task: Task): boolean {
+    const categoryStore = useCategoryStore();
+    return categoryStore.isCategoryLocked(task.categoryId);
+  }
 
   async function load() {
     loading.value = true;
@@ -109,6 +116,7 @@ export const useTaskStore = defineStore('task', () => {
     remove,
     reorder,
     resetSort,
-    toggleStatus
+    toggleStatus,
+    isTaskLocked,
   };
 });

@@ -6,6 +6,7 @@ export interface Category {
   color: string;
   sortOrder: number;
   createdAt: number;
+  locked?: boolean; // 是否锁定（该分类及下属任务禁止删除）
 }
 
 export interface Task {

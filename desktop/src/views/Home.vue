@@ -459,6 +459,11 @@ function editTask(task: Task) {
 
 // 删除任务
 async function deleteTask(id: string) {
+  const task = taskStore.tasks.find(t => t.id === id);
+  if (task && taskStore.isTaskLocked(task)) {
+    message.warning('锁定的分类下任务不能被删除');
+    return;
+  }
   await taskStore.remove(id);
 }
 

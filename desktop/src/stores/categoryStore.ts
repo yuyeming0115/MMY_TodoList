@@ -33,6 +33,37 @@ export const useCategoryStore = defineStore('category', () => {
     if (index !== -1) categories.value[index] = category;
   }
 
+  // 锁定/解锁分类
+  async function lockCategory(category: Category): Promise<void> {
+    category.locked = true;
+    await updateCategory(category);
+    const index = categories.value.findIndex(c => c.id === category.id);
+    if (index !== -1) categories.value[index] = category;
+  }
+
+  async function unlockCategory(category: Category): Promise<void> {
+    category.locked = false;
+    await updateCategory(category);
+    const index = categories.value.findIndex(c => c.id === category.id);
+    if (index !== -1) categories.value[index] = category;
+  }
+
+  async function toggleCategoryLock(category: Category): Promise<'locked' | 'unlocked'> {
+    if (category.locked) {
+      await unlockCategory(category);
+      return 'unlocked';
+    } else {
+      await lockCategory(category);
+      return 'locked';
+    }
+  }
+
+  // 检查任务是否在锁定分类下
+  function isCategoryLocked(categoryId: string): boolean {
+    const category = categories.value.find(c => c.id === categoryId);
+    return category?.locked === true;
+  }
+
   async function remove(id: string) {
     await deleteCategory(id);
     categories.value = categories.value.filter(c => c.id !== id);
@@ -75,6 +106,10 @@ export const useCategoryStore = defineStore('category', () => {
     remove,
     select,
     ensureDefaultCategory,
-    reorder
+    reorder,
+    lockCategory,
+    unlockCategory,
+    toggleCategoryLock,
+    isCategoryLocked,
   };
 });

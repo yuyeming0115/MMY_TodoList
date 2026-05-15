@@ -10,6 +10,7 @@ pub struct Category {
     pub color: String,
     pub sort_order: i32,
     pub created_at: i64,
+    pub locked: Option<bool>, // 是否锁定（该分类及下属任务禁止删除）
 }
 
 impl Category {
@@ -20,6 +21,7 @@ impl Category {
             color,
             sort_order: 0,
             created_at: Utc::now().timestamp_millis(),
+            locked: None,
         }
     }
 }

@@ -6,7 +6,7 @@ import type { Category } from '../types';
 import { NDropdown, useMessage } from 'naive-ui';
 import { h } from 'vue';
 import { NIcon } from 'naive-ui';
-import { CreateOutline as EditIcon, TrashOutline as DeleteIcon } from '@vicons/ionicons5';
+import { CreateOutline as EditIcon, TrashOutline as DeleteIcon, LockClosedOutline as LockIcon } from '@vicons/ionicons5';
 import { FREE_CATEGORY_LIMIT } from '../types';
 
 const store = useCategoryStore();
@@ -76,7 +76,7 @@ function handleTabContextMenu(e: MouseEvent, cat: Category) {
   contextMenuShow.value = true;
 }
 
-function handleContextMenuSelect(key: string) {
+async function handleContextMenuSelect(key: string) {
   contextMenuShow.value = false;
   if (!contextMenuCat.value) return;
   const cat = contextMenuCat.value;
@@ -85,6 +85,9 @@ function handleContextMenuSelect(key: string) {
     startInlineEdit(cat);
   } else if (key === 'color') {
     colorPickerShow.value = true;
+  } else if (key === 'lock') {
+    const result = await store.toggleCategoryLock(cat);
+    message.success(result === 'locked' ? '分类已锁定，该分类下所有任务禁止删除' : '分类已解锁');
   } else if (key === 'delete') {
     deleteCategory(cat);
   }
@@ -102,6 +105,11 @@ import { useDialog } from 'naive-ui';
 const dialog = useDialog();
 
 function deleteCategory(cat: Category) {
+  // 检查分类是否已锁定
+  if (cat.locked) {
+    message.warning('锁定的分类不能被删除');
+    return;
+  }
   dialog.warning({
     title: '确认删除',
     content: `确定删除分类"${cat.name}"及其所有任务？`,
@@ -209,6 +217,7 @@ onUnmounted(() => {
             />
           </template>
           <template v-else>
+            <span v-if="element.locked" style="margin-right: 4px;">🔒</span>
             <span :style="element.color ? { color: element.color } : {}">{{ element.name }}</span>
           </template>
         </button>
@@ -235,6 +244,7 @@ onUnmounted(() => {
           />
         </template>
         <template v-else>
+          <span v-if="cat.locked" style="margin-right: 4px;">🔒</span>
           <span :style="cat.color ? { color: cat.color } : {}">{{ cat.name }}</span>
         </template>
       </button>
@@ -259,6 +269,7 @@ onUnmounted(() => {
       :options="[
         { label: '编辑名称', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
         { label: '设置颜色', key: 'color' },
+        { label: contextMenuCat?.locked ? '解锁分类' : '锁定分类', key: 'lock', icon: () => h(NIcon, { component: LockIcon, size: 14, style: { color: contextMenuCat?.locked ? '#E05252' : '#333' } }) },
         { type: 'divider', key: 'd1' },
         { label: '删除分类', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 14, style: { color: '#E05252' } }) }
       ]"
