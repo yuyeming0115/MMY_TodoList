@@ -150,7 +150,6 @@ export default {
     lockedSelected: '已锁定 {count} 项',
     lockedCannotDelete: '锁定的卡片不能被删除',
     lockedExcludedFromDelete: '已排除 {count} 个锁定的卡片不删除',
-    deleteSelected: '已删除 {count} 项',
   },
   // 分类相关
   category: {

@@ -150,7 +150,6 @@ export default {
     lockedSelected: 'Locked {count} items',
     lockedCannotDelete: 'Locked cards cannot be deleted',
     lockedExcludedFromDelete: '{count} locked cards excluded from deletion',
-    deleteSelected: 'Deleted {count} items',
   },
   // 分类相关
   category: {
