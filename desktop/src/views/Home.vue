@@ -603,18 +603,6 @@ function goBackToMain() {
   currentPage.value = 'main';
 }
 
-/// 全局窗口拖拽（仅用于固定区域，排除交互元素）
-async function startWindowDrag(e: MouseEvent) {
-  const target = e.target as HTMLElement;
-  // 排除所有交互元素
-  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-checkbox, .n-switch')) {
-    return;
-  }
-  try {
-    await appWindow.startDragging();
-  } catch (_) {}
-}
-
 /// 分类标签区域拖拽（点击空白处拖拽窗口）
 async function startTabsDrag(e: MouseEvent) {
   const target = e.target as HTMLElement;
@@ -638,33 +626,11 @@ async function hideToTray() {
 
 <template>
   <div class="app-layout">
-          <!-- 全局 Header（最上方，全宽） -->
-          <div class="global-header" @mousedown="startWindowDrag">
+          <!-- 全局 Header（最上方，极简） -->
+          <div class="global-header">
             <div class="header" data-tauri-drag-region>
-              <!-- 任务面板：分类 tabs -->
-              <div v-if="activePanel === 'tasks' && !isPinned" class="tabs-wrapper" @mousedown="startTabsDrag">
-                <CategoryTabs />
-              </div>
-
-              <!-- 剪贴板面板：分类 tabs -->
-              <div v-else-if="activePanel === 'clipboard' && !isPinned" class="tabs-wrapper" @mousedown="startTabsDrag">
-                <ClipboardCategoryTabs />
-              </div>
-
-              <!-- 精简模式：剪贴板迷你分类切换器 -->
-              <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clip-filter">
-                <button
-                  :class="['clip-pill', { active: compactClipFilter === null }]"
-                  @click="compactClipFilter = null"
-                >{{ t('compact.all') }}</button>
-                <button
-                  v-for="cat in clipboardStore.builtinCategories"
-                  :key="cat.id"
-                  :class="['clip-pill', { active: compactClipFilter === cat.id }]"
-                  :style="{ '--pill-color': cat.color }"
-                  @click="compactClipFilter = cat.id"
-                >{{ cat.name === '文本' || cat.name === 'Text' ? t('compact.text') : cat.name === '图像' || cat.name === 'Image' ? t('compact.image') : t('compact.star') }}</button>
-              </div>
+              <!-- Mac 标题 -->
+              <span v-if="isMac" class="app-title">MMY Todo</span>
 
               <!-- 窗口控制按钮 -->
               <div class="window-controls win-controls" v-if="isWindows">
@@ -685,72 +651,13 @@ async function hideToTray() {
                 </NButton>
               </div>
             </div>
+          </div>
 
-            <!-- 第二行：搜索栏 -->
-            <div v-if="!isPinned" class="search-wrapper">
-              <div v-if="activePanel === 'tasks'" class="task-search-row">
-                <NButton
-                  type="primary" size="small"
-                  @click="openAddTask"
-                  class="search-action-btn"
-                >
-                  <template #icon><NIcon :component="AddIcon" /></template>
-                  {{ t('header.task') }}
-                </NButton>
-                <div class="search-bar-wrapper">
-                  <SearchBar />
-                </div>
-                <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
-                  <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
-                </button>
-                <NDropdown
-                  placement="bottom-end"
-                  :options="sortModeOptions"
-                  @select="handleSortSelect"
-                >
-                  <button class="view-toggle-btn" :title="sortModeLabel">
-                    <NIcon :component="SortIcon" size="16" />
-                  </button>
-                </NDropdown>
-              </div>
-              <div v-else-if="activePanel === 'clipboard'" class="clipboard-search-row">
-                <NButton
-                  type="primary" size="small"
-                  @click="handlePasteClipboard"
-                  class="search-action-btn"
-                >
-                  <template #icon><NIcon :component="CopyIcon" /></template>
-                  {{ t('header.paste') }}
-                </NButton>
-                <NInput
-                  v-model:value="clipboardSearchQuery"
-                  :placeholder="t('header.searchClipboard')"
-                  clearable size="small"
-                  class="clipboard-search-input"
-                  @update:value="onClipboardSearch"
-                  @clear="clipboardSearchQuery = ''"
-                />
-                <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
-                  <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
-                </button>
-                <NDropdown
-                  placement="bottom-end"
-                  :options="clipboardSortModeOptions"
-                  @select="handleClipboardSortSelect"
-                >
-                  <button class="view-toggle-btn" :title="clipboardSortModeLabel">
-                    <NIcon :component="SortIcon" size="16" />
-                  </button>
-                </NDropdown>
-              </div>
-            </div>
-
-            <!-- 精简模式下剪贴板视图切换按钮（紧贴右侧，最小化占用） -->
-            <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clipboard-actions">
-              <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
-                <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
-              </button>
-            </div>
+          <!-- 精简模式下剪贴板操作栏（紧贴右侧，最小化占用） -->
+          <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clipboard-actions">
+            <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
+              <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
+            </button>
           </div>
 
           <!-- 侧边栏 + 内容区 -->
@@ -809,6 +716,42 @@ async function hideToTray() {
             <div class="main-content">
               <!-- 任务面板 -->
               <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isPinned }">
+                <!-- 非精简模式：分类 tabs -->
+                <div v-if="!isPinned" class="panel-tabs" @mousedown="startTabsDrag">
+                  <CategoryTabs />
+                </div>
+
+                <!-- 非精简模式：搜索行 -->
+                <div v-if="!isPinned" class="panel-search-row">
+                  <div class="task-search-row">
+                    <NButton
+                      type="primary" size="small"
+                      @click="openAddTask"
+                      class="search-action-btn"
+                    >
+                      <template #icon><NIcon :component="AddIcon" /></template>
+                      {{ t('header.task') }}
+                    </NButton>
+                    <div class="search-bar-wrapper">
+                      <SearchBar />
+                    </div>
+                    <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
+                      <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
+                    </button>
+                    <NDropdown
+                      placement="bottom-end"
+                      :options="sortModeOptions"
+                      @select="handleSortSelect"
+                    >
+                      <button class="view-toggle-btn" :title="sortModeLabel">
+                        <NIcon :component="SortIcon" size="16" />
+                      </button>
+                    </NDropdown>
+                  </div>
+                </div>
+
+                <!-- 精简模式：剪贴板迷你分类切换器（任务面板不需要） -->
+
                 <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned, 'stacked-list': taskViewMode === 'stacked' }" :style="taskStackStyle" @contextmenu="handleTaskListContextMenu">
                   <div v-if="filteredTasks.length === 0" class="empty">
                     {{ t('empty.noTasks') }}
@@ -878,6 +821,60 @@ async function hideToTray() {
 
               <!-- 剪贴板面板 -->
               <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel" :class="{ 'compact-panel': isPinned }">
+                <!-- 非精简模式：分类 tabs -->
+                <div v-if="!isPinned" class="panel-tabs" @mousedown="startTabsDrag">
+                  <ClipboardCategoryTabs />
+                </div>
+
+                <!-- 非精简模式：搜索行 -->
+                <div v-if="!isPinned" class="panel-search-row">
+                  <div class="clipboard-search-row">
+                    <NButton
+                      type="primary" size="small"
+                      @click="handlePasteClipboard"
+                      class="search-action-btn"
+                    >
+                      <template #icon><NIcon :component="CopyIcon" /></template>
+                      {{ t('header.paste') }}
+                    </NButton>
+                    <NInput
+                      v-model:value="clipboardSearchQuery"
+                      :placeholder="t('header.searchClipboard')"
+                      clearable size="small"
+                      class="clipboard-search-input"
+                      @update:value="onClipboardSearch"
+                      @clear="clipboardSearchQuery = ''"
+                    />
+                    <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
+                      <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
+                    </button>
+                    <NDropdown
+                      placement="bottom-end"
+                      :options="clipboardSortModeOptions"
+                      @select="handleClipboardSortSelect"
+                    >
+                      <button class="view-toggle-btn" :title="clipboardSortModeLabel">
+                        <NIcon :component="SortIcon" size="16" />
+                      </button>
+                    </NDropdown>
+                  </div>
+                </div>
+
+                <!-- 精简模式：剪贴板迷你分类切换器 -->
+                <div v-if="isPinned" class="compact-clip-filter">
+                  <button
+                    :class="['clip-pill', { active: compactClipFilter === null }]"
+                    @click="compactClipFilter = null"
+                  >{{ t('compact.all') }}</button>
+                  <button
+                    v-for="cat in clipboardStore.builtinCategories"
+                    :key="cat.id"
+                    :class="['clip-pill', { active: compactClipFilter === cat.id }]"
+                    :style="{ '--pill-color': cat.color }"
+                    @click="compactClipFilter = cat.id"
+                  >{{ cat.name === '文本' || cat.name === 'Text' ? t('compact.text') : cat.name === '图像' || cat.name === 'Image' ? t('compact.image') : t('compact.star') }}</button>
+                </div>
+
                 <ClipboardPanel :compact="isPinned" :category-filter="compactClipFilter" :stacked="isClipboardStacked" :stack-gap="settingsStore.settings.clipboardStackGap" />
               </div>
 
@@ -925,13 +922,13 @@ html.dark, html.dark body, html.dark #app {
   overflow: hidden;
 }
 
-/* 全局 Header（最上方，全宽） */
+/* 全局 Header（最上方，极简） */
 .global-header {
   position: relative;
   flex-shrink: 0;
   background: #f5f5f5;
   border-bottom: 1px solid #e0e0e0;
-  padding: 12px 12px 0 12px;
+  padding: 8px 12px;
 }
 
 html.dark .global-header {
@@ -940,11 +937,23 @@ html.dark .global-header {
 }
 
 .global-header .header {
-  padding-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.global-header .search-wrapper {
-  padding: 4px 0 8px;
+/* Mac 标题 */
+.app-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+html.dark .app-title {
+  color: #999;
 }
 
 /* 侧边栏 + 内容区 */
@@ -1053,10 +1062,34 @@ html.dark .sidebar-btn.active {
   padding: 12px;
 }
 
+/* 面板内分类 tabs 区域 */
+.panel-tabs {
+  flex-shrink: 0;
+  padding-top: 4px;
+  padding-bottom: 0;
+  cursor: default;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* 面板内搜索行 */
+.panel-search-row {
+  flex-shrink: 0;
+  padding: 4px 0 8px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 .tasks-panel .task-list,
 .clipboard-panel .clipboard-list {
   padding-top: 12px;
   padding-bottom: 12px;
+}
+
+/* 精简模式下去掉 tabs 和搜索行的 padding */
+.panel.compact-panel .panel-tabs,
+.panel.compact-panel .panel-search-row {
+  display: none;
 }
 
 html.dark .app-container {
@@ -1072,11 +1105,12 @@ html.dark .app-container {
 
 /* Mac overlay 标题栏适配（红绿灯悬浮在内容上，类似微信） */
 html.platform-mac .global-header {
-  padding-top: 36px;
+  padding-top: 40px;
+  padding-bottom: 4px;
 }
 
 html.platform-mac .sidebar {
-  padding-top: 36px;
+  padding-top: 40px;
 }
 
 html.platform-mac .header {
@@ -1127,13 +1161,8 @@ html.dark .header {
   app-region: no-drag;
 }
 
-/* 分类标签区域 - 通过 JS mousedown 处理拖拽，避免与 data-tauri-drag-region 冲突 */
-.tabs-wrapper {
-  cursor: default;
-}
-
 /* 标签按钮本身可点击 */
-.tabs-wrapper .tab-btn {
+.panel-tabs .tab-btn {
   cursor: pointer;
 }
 
@@ -1198,15 +1227,6 @@ html.dark .win-controls .win-btn:hover {
 .win-controls .close-btn:hover {
   background: #e81123 !important;
   color: #fff !important;
-}
-
-.tabs-wrapper {
-  flex: 1;
-  overflow: hidden;
-}
-
-.search-wrapper {
-  padding: 4px 0 8px;
 }
 
 /* 任务搜索行 */
