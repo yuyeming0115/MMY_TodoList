@@ -46,17 +46,10 @@ function toggleSelectMode() {
   }
 }
 
-// 切换单个选中（收藏卡不允许选中）
+// 切换单个选中（允许选中收藏卡用于移动操作）
 function toggleSelect(id: string, isShift: boolean) {
-  // 检查是否是收藏卡
-  const item = filteredItems.value.find(i => i.id === id);
-  if (item && item.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE) {
-    message.warning(t('messages.favoriteCannotSelect'));
-    return;
-  }
-
   if (isShift && selectionAnchor.value) {
-    // Shift 连选：选中锚点到当前之间的所有项目（排除收藏卡）
+    // Shift 连选：选中锚点到当前之间的所有项目
     const ids = filteredItems.value.map(i => i.id);
     const anchorIdx = ids.indexOf(selectionAnchor.value);
     const currIdx = ids.indexOf(id);
@@ -64,11 +57,7 @@ function toggleSelect(id: string, isShift: boolean) {
       const start = Math.min(anchorIdx, currIdx);
       const end = Math.max(anchorIdx, currIdx);
       for (let i = start; i <= end; i++) {
-        const targetItem = filteredItems.value[i];
-        // 连选时也要排除收藏卡
-        if (targetItem.categoryId !== BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE) {
-          selectedIds.value.add(ids[i]);
-        }
+        selectedIds.value.add(ids[i]);
       }
     }
   } else {
@@ -90,7 +79,7 @@ function enterSelectModeFromCard() {
 
 // ESC 键退出选择模式
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && selectMode.value) {
+  if (e.key === 'Escape' && (selectMode.value || selectedIds.value.size > 0)) {
     selectMode.value = false;
     selectedIds.value = new Set();
     selectionAnchor.value = null;
@@ -134,30 +123,39 @@ async function batchMoveToCategory(categoryId: string) {
   selectionAnchor.value = null;
 }
 
-// 全选 / 取消全选（排除收藏卡）
+// 全选
 function selectAll() {
-  // 只选中非收藏卡
-  const selectableIds = filteredItems.value
-    .filter(i => i.categoryId !== BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE)
-    .map(i => i.id);
-  selectedIds.value = new Set(selectableIds);
+  const allIds = filteredItems.value.map(i => i.id);
+  selectedIds.value = new Set(allIds);
   if (!selectMode.value) selectMode.value = true;
-
-  // 如果有收藏卡被排除，显示提示
-  const favoriteCount = filteredItems.value.filter(i => i.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE).length;
-  if (favoriteCount > 0) {
-    message.info(t('messages.favoriteExcludedFromSelect', { count: favoriteCount }));
-  }
 }
 
-// 批量删除
+// 批量删除（过滤收藏卡，只删除非收藏的选中项）
 async function deleteSelected() {
-  const ids = [...selectedIds.value];
-  if (ids.length === 0) return;
+  // 过滤出非收藏卡的选中项
+  const ids = [...selectedIds.value].filter(id => {
+    const item = clipboardStore.items.find(i => i.id === id);
+    return item && item.categoryId !== BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE;
+  });
+
+  if (ids.length === 0) {
+    // 如果只有收藏卡被选中，提示用户
+    if (selectedIds.value.size > 0) {
+      message.warning(t('messages.favoriteCannotDelete'));
+    }
+    return;
+  }
+
   await clipboardStore.removeItems(ids);
   message.success(t('messages.deleteSelected', { count: ids.length }));
+
+  // 如果有收藏卡被排除，额外提示
+  const excludedCount = selectedIds.value.size - ids.length;
+  if (excludedCount > 0) {
+    message.info(t('messages.favoriteExcludedFromDelete', { count: excludedCount }));
+  }
+
   selectedIds.value = new Set();
-  // 删除后自动退出选择模式
   selectMode.value = false;
   selectionAnchor.value = null;
 }

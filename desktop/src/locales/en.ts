@@ -148,8 +148,8 @@ export default {
     favoriteSelected: 'Favorited {count} items',
     exitSelectMode: 'Exit',
     confirmDeleteSelected: 'Delete {count} selected items?',
-    favoriteCannotSelect: 'Favorite cards cannot be selected for deletion',
-    favoriteExcludedFromSelect: '{count} favorite cards excluded',
+    favoriteCannotDelete: 'Favorite cards cannot be deleted',
+    favoriteExcludedFromDelete: '{count} favorite cards excluded from deletion',
   },
   // 分类相关
   category: {
