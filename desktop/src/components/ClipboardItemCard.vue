@@ -27,6 +27,7 @@ const emit = defineEmits<{
   (e: 'toggle-select', id: string, shift: boolean): void;
   (e: 'enter-select-mode'): void;
   (e: 'move-to-category', item: ClipboardItem, categoryId: string): void;
+  (e: 'batch-move-to-category', categoryId: string): void;
 }>();
 
 const message = useMessage();
@@ -278,8 +279,13 @@ async function handleMenuSelect(key: string) {
   if (key === 'enter_select') emit('enter-select-mode');
   if (key.startsWith('move_')) {
     const catId = key.slice(5);
-    emit('move-to-category', props.item, catId);
-    message.success(t('messages.moved'));
+    // 选择模式下批量移动
+    if (props.showCheckbox) {
+      emit('batch-move-to-category', catId);
+    } else {
+      emit('move-to-category', props.item, catId);
+      message.success(t('messages.moved'));
+    }
   }
   if (key.startsWith('expiry_')) setExpiry(key);
 }

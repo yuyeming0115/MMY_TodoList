@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, h } from 'vue';
 import { NDropdown, NIcon, NInput, NPopconfirm, useMessage } from 'naive-ui';
-import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon } from '@vicons/ionicons5';
+import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon, CheckmarkCircleOutline as CheckAllIcon, CloseOutline as CloseIcon, StarOutline as FavoriteIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import { useI18n } from '../composables/useI18n';
@@ -94,6 +94,29 @@ function moveToCategory(item: ClipboardItem, categoryId: string) {
   clipboardStore.updateItem(item);
 }
 
+// 批量移动分类
+async function batchMoveToCategory(categoryId: string) {
+  const ids = [...selectedIds.value];
+  if (ids.length === 0) return;
+
+  let movedCount = 0;
+  for (const id of ids) {
+    const item = clipboardStore.items.find(i => i.id === id);
+    if (item) {
+      item.categoryId = categoryId;
+      await clipboardStore.updateItem(item);
+      movedCount++;
+    }
+  }
+
+  if (movedCount > 0) {
+    message.success(t('messages.movedSelected', { count: movedCount }));
+  }
+  selectedIds.value = new Set();
+  selectMode.value = false;
+  selectionAnchor.value = null;
+}
+
 // 全选 / 取消全选（排除收藏卡）
 function selectAll() {
   // 只选中非收藏卡
@@ -118,6 +141,28 @@ async function deleteSelected() {
   message.success(t('messages.deleteSelected', { count: ids.length }));
   selectedIds.value = new Set();
   // 删除后自动退出选择模式
+  selectMode.value = false;
+  selectionAnchor.value = null;
+}
+
+// 批量收藏
+async function favoriteSelected() {
+  const ids = [...selectedIds.value];
+  if (ids.length === 0) return;
+
+  let favoritedCount = 0;
+  for (const id of ids) {
+    const item = clipboardStore.items.find(i => i.id === id);
+    if (item && item.categoryId !== BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE) {
+      const result = await clipboardStore.favoriteItem(item);
+      if (result === 'favorited') favoritedCount++;
+    }
+  }
+
+  if (favoritedCount > 0) {
+    message.success(t('messages.favoriteSelected', { count: favoritedCount }));
+  }
+  selectedIds.value = new Set();
   selectMode.value = false;
   selectionAnchor.value = null;
 }
@@ -257,6 +302,10 @@ function cancelEdit() {
         <NIcon :component="CheckAllIcon" size="16" />
         {{ t('messages.selectAll') }}
       </button>
+      <button class="toolbar-btn favorite" @click="favoriteSelected" :disabled="selectedIds.size === 0" :title="t('messages.favoriteSelectedBtn')">
+        <NIcon :component="FavoriteIcon" size="16" />
+        {{ t('messages.favoriteSelectedBtn') }}
+      </button>
       <NPopconfirm @positive-click="deleteSelected">
         <template #trigger>
           <button class="toolbar-btn danger" :disabled="selectedIds.size === 0" :title="t('messages.deleteSelectedBtn')">
@@ -306,6 +355,7 @@ function cancelEdit() {
             @toggle-select="toggleSelect"
             @enter-select-mode="enterSelectModeFromCard"
             @move-to-category="moveToCategory"
+            @batch-move-to-category="batchMoveToCategory"
           />
         </div>
       </template>
@@ -420,6 +470,16 @@ html.dark .selection-toolbar {
   color: #fff;
 }
 
+.toolbar-btn.favorite {
+  color: #F39C12;
+  border-color: #F39C12;
+}
+
+.toolbar-btn.favorite:hover:not(:disabled) {
+  background: #F39C12;
+  color: #fff;
+}
+
 html.dark .toolbar-btn {
   background: #2a2a2a;
   border-color: #444;
@@ -439,6 +499,16 @@ html.dark .toolbar-btn.danger {
 
 html.dark .toolbar-btn.danger:hover:not(:disabled) {
   background: #E05252;
+  color: #fff;
+}
+
+html.dark .toolbar-btn.favorite {
+  color: #F39C12;
+  border-color: #F39C12;
+}
+
+html.dark .toolbar-btn.favorite:hover:not(:disabled) {
+  background: #F39C12;
   color: #fff;
 }
 
