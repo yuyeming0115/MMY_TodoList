@@ -935,7 +935,11 @@ html.dark, html.dark body, html.dark #app {
   height: 100vh;
   overflow: hidden;
   border-radius: 10px;
-  background: transparent;
+  background: #f5f5f5;
+}
+
+html.dark .app-layout {
+  background: #1a1a1a;
 }
 
 /* 全局 Header（仅 Windows） */
@@ -1033,7 +1037,7 @@ html.dark .mac-btn .mac-btn-icon {
 .sidebar {
   width: 68px;
   flex-shrink: 0;
-  background: rgba(245, 245, 245, 0.7);
+  background: rgba(245, 245, 245, 0.95);
   display: flex;
   flex-direction: column;
   z-index: 10;
@@ -1045,7 +1049,7 @@ html.dark .mac-btn .mac-btn-icon {
 }
 
 html.dark .sidebar {
-  background: rgba(30, 30, 30, 0.25);
+  background: rgba(26, 26, 26, 0.95);
   border-right-color: rgba(255, 255, 255, 0.08);
 }
 
