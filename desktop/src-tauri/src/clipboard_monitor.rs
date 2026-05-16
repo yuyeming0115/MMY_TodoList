@@ -15,13 +15,21 @@ const MAX_IMAGE_BASE64_LEN: usize = 10_485_760;
 
 pub struct ClipboardMonitor {
     running: Arc<AtomicBool>,
+    /// 拖拽时设为 true，阻止监控器抓取自身写入的剪贴板内容
+    skip_next: Arc<AtomicBool>,
 }
 
 impl ClipboardMonitor {
     pub fn new() -> Self {
         Self {
             running: Arc::new(AtomicBool::new(false)),
+            skip_next: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// 标记下一次剪贴板变化应该被跳过（拖拽前调用）
+    pub fn mark_skip_next(&self) {
+        self.skip_next.store(true, Ordering::SeqCst);
     }
 
     pub fn start(&self, app_handle: tauri::AppHandle, db: Arc<Database>) {
@@ -31,12 +39,19 @@ impl ClipboardMonitor {
         self.running.store(true, Ordering::Relaxed);
 
         let running = self.running.clone();
+        let skip_next = self.skip_next.clone();
 
         thread::spawn(move || {
             let mut last_text_hash: Option<String> = None;
             let mut last_image_hash: Option<String> = None;
 
             while running.load(Ordering::Relaxed) {
+                // 跳过标记：跳过本次检查
+                if skip_next.swap(false, Ordering::SeqCst) {
+                    thread::sleep(Duration::from_millis(1500));
+                    continue;
+                }
+
                 // 一次剪贴板打开周期内同时读取文本和图像，避免竞态
                 let clip_text = catch_unwind(|| try_read_text());
                 let clip_image = catch_unwind(|| try_read_image());

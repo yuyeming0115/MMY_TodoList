@@ -357,7 +357,7 @@ function cancelEdit() {
   editContent.value = '';
 }
 
-// 跨应用拖拽处理
+// 跨应用拖拽处理：写入剪贴板 + text/uri-list，拖拽结束自动 Ctrl+V
 async function handleCrossAppDragStart(e: DragEvent) {
   if (!e.dataTransfer) return;
 
@@ -365,24 +365,20 @@ async function handleCrossAppDragStart(e: DragEvent) {
   isCrossDragging.value = true;
   e.dataTransfer.effectAllowed = 'copy';
 
-  if (props.item.imagePath) {
-    // 有本地文件路径：写入 CF_HDROP + PNG + DIB，模拟 Ditto
+  if (props.item.imagePath || props.item.imageBase64) {
     const { invoke } = await import('@tauri-apps/api/core');
-    try {
-      await invoke('get_image_for_drag', { id: props.item.id });
-    } catch {
-      // 静默失败
-    }
-    const filePath = props.item.imagePath.replace(/\\/g, '/');
-    e.dataTransfer.setData('text/uri-list', `file:///${filePath}`);
-  } else if (props.item.imageBase64) {
-    // 无本地路径（仅 base64）：写入 DIB
-    const { invoke } = await import('@tauri-apps/api/core');
-    try {
+    // 先标记跳过下一次剪贴板监控，防止自我吞噬生成重复卡片
+    await invoke('mark_clipboard_skip_next').catch(() => {});
+
+    if (props.item.imagePath) {
+      // 有本地文件：写 PNG + CF_HDROP（PS 需要文件拖拽）
+      await invoke('get_image_for_drag', { id: props.item.id }).catch(() => {});
+      const filePath = props.item.imagePath.replace(/\\/g, '/');
+      e.dataTransfer.setData('text/uri-list', `file:///${filePath}`);
+    } else if (props.item.imageBase64) {
+      // 仅 base64：写 PNG
       const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      await invoke('write_image_to_clipboard', { base64: base64Data });
-    } catch {
-      // 静默失败
+      await invoke('write_image_to_clipboard', { base64: base64Data }).catch(() => {});
     }
   } else {
     // 文本
@@ -390,11 +386,10 @@ async function handleCrossAppDragStart(e: DragEvent) {
   }
 }
 
-// 拖拽结束：如果是图片且拖拽成功，自动触发 Ctrl+V 粘贴
+// 拖拽结束：图片类型统一自动 Ctrl+V 粘贴
 async function handleCrossAppDragEnd(e: DragEvent) {
   isCrossDragging.value = false;
 
-  // 仅图片类型 + 拖拽成功（dropEffect 不是 'none'）时自动粘贴
   if (
     (props.item.imagePath || props.item.imageBase64) &&
     e.dataTransfer?.dropEffect &&
@@ -404,7 +399,7 @@ async function handleCrossAppDragEnd(e: DragEvent) {
     try {
       await invoke('simulate_ctrl_v');
     } catch {
-      message.warning('拖拽完成，请手动粘贴 (Ctrl+V)');
+      // 自动粘贴失败，静默（目标应用可能已通过 text/uri-list 接受了文件拖拽）
     }
   }
 }

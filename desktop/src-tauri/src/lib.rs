@@ -161,6 +161,7 @@ pub fn run() {
             read_clipboard_image,
             write_image_to_clipboard,
             simulate_ctrl_v,
+            mark_clipboard_skip_next,
             // 快捷键命令
             commands::update_global_shortcut,
         ])
@@ -396,7 +397,7 @@ fn try_read_once() -> Result<Option<String>, String> {
     Ok(None)
 }
 
-/// 将 base64 图片写入系统剪贴板
+/// 将 base64 图片写入系统剪贴板（PNG 注册格式）
 #[tauri::command]
 fn write_image_to_clipboard(base64: String) -> Result<(), String> {
     use base64::{Engine, engine::general_purpose::STANDARD};
@@ -405,25 +406,25 @@ fn write_image_to_clipboard(base64: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        use clipboard_win::{Clipboard, formats, raw};
-        use image::codecs::bmp::BmpEncoder;
+        use clipboard_win::{Clipboard, raw};
+        use image::codecs::png::PngEncoder;
+        use image::ImageEncoder;
 
         let img = image::load_from_memory(&bytes).map_err(|e| format!("图片解码失败: {}", e))?;
         let rgba = img.into_rgba8();
         let (w, h) = rgba.dimensions();
 
-        // 编码为 BMP（CF_DIB 格式）
-        let mut bmp_buf = Vec::new();
-        let mut encoder = BmpEncoder::new(&mut bmp_buf);
-        encoder.encode(&rgba, w, h, image::ExtendedColorType::Rgba8)
-            .map_err(|e| format!("BMP 编码失败: {}", e))?;
-
-        // 去掉 BMP 文件头，保留 DIB 数据
-        let dib_data = &bmp_buf[14..];
-
         let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
-        raw::set(formats::CF_DIB, dib_data).map_err(|e| format!("写入剪贴板失败: {}", e))?;
 
+        // 写入 PNG 注册格式（微信、浏览器、PS 都支持）
+        if let Some(png_fmt) = clipboard_win::register_format("PNG") {
+            let mut png_buf = Vec::new();
+            PngEncoder::new(&mut png_buf)
+                .write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)
+                .map_err(|e| format!("PNG 编码失败: {}", e))?;
+            raw::set(png_fmt.get(), &png_buf)
+                .map_err(|e| format!("写入剪贴板失败: {}", e))?;
+        }
         Ok(())
     }
 
@@ -451,6 +452,12 @@ fn write_image_to_clipboard(base64: String) -> Result<(), String> {
         let _ = bytes;
         Err("不支持的平台".to_string())
     }
+}
+
+/// 标记下一次剪贴板变化应被跳过（拖拽前调用，防止监控器抓取自身写入）
+#[tauri::command]
+fn mark_clipboard_skip_next(monitor: tauri::State<'_, ClipboardMonitor>) {
+    monitor.mark_skip_next();
 }
 
 /// 模拟 Ctrl+V 粘贴（用于拖拽后自动粘贴）
