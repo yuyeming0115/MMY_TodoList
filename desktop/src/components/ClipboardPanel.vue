@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, h, onMounted, onUnmounted } from 'vue';
 import { NDropdown, NIcon, NInput, useMessage } from 'naive-ui';
-import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon, CreateOutline as EditIcon } from '@vicons/ionicons5';
+import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, CreateOutline as EditIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
 import { useI18n } from '../composables/useI18n';
 import ClipboardItemCard from './ClipboardItemCard.vue';
 import type { ClipboardItem } from '../types';
-import { BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 
 const clipboardStore = useClipboardStore();
 const message = useMessage();
@@ -15,7 +14,6 @@ const { t } = useI18n();
 
 const props = defineProps<{
   compact?: boolean;
-  categoryFilter?: string | null;
   stacked?: boolean;
   stackGap?: number;
 }>();
@@ -163,28 +161,6 @@ async function deleteSelected() {
   selectionAnchor.value = null;
 }
 
-// 批量收藏
-async function batchFavorite() {
-  const ids = [...selectedIds.value];
-  if (ids.length === 0) return;
-
-  let favoritedCount = 0;
-  for (const id of ids) {
-    const item = clipboardStore.items.find(i => i.id === id);
-    if (item && item.categoryId !== BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE) {
-      const result = await clipboardStore.favoriteItem(item);
-      if (result === 'favorited') favoritedCount++;
-    }
-  }
-
-  if (favoritedCount > 0) {
-    message.success(t('messages.favoriteSelected', { count: favoritedCount }));
-  }
-  selectedIds.value = new Set();
-  selectMode.value = false;
-  selectionAnchor.value = null;
-}
-
 // 批量锁定
 async function batchLock() {
   const ids = [...selectedIds.value];
@@ -207,37 +183,21 @@ async function batchLock() {
   selectionAnchor.value = null;
 }
 
-// 过滤后的项目（精简模式下使用 props.categoryFilter，否则用 store 的过滤）
+// 过滤后的项目（精简模式和正常模式都使用 store 的过滤）
 const filteredItems = computed(() => {
-  let items = [...clipboardStore.items];
+  // 精简模式和正常模式都使用 store 的 filteredItems（包含分类和搜索）
+  let items = clipboardStore.filteredItems;
 
-  if (props.compact && props.categoryFilter) {
-    // 精简模式：使用传入的分类过滤
-    items = items.filter(i => i.categoryId === props.categoryFilter);
-  } else if (props.compact) {
-    // 精简模式无过滤：显示全部
-    // no filter, show all
-  } else {
-    // 正常模式：使用 store 的 filteredItems（包含分类和搜索）
-    return clipboardStore.filteredItems;
-  }
-
-  if (clipboardStore.searchQuery) {
-    const q = clipboardStore.searchQuery.toLowerCase();
-    items = items.filter(i =>
-      i.title.toLowerCase().includes(q) ||
-      i.content.toLowerCase().includes(q)
-    );
-  }
-
-  // 根据排序模式排序
-  const mode = clipboardStore.sortMode;
-  if (mode === 'name') {
-    items.sort((a, b) => a.title.localeCompare(b.title, 'zh'));
-  } else if (mode === 'createdAt') {
-    items.sort((a, b) => b.createdAt - a.createdAt);
-  } else {
-    items.sort((a, b) => a.sortOrder - b.sortOrder);
+  // 精简模式下根据排序模式排序（正常模式已排序）
+  if (props.compact) {
+    const mode = clipboardStore.sortMode;
+    if (mode === 'name') {
+      items = [...items].sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+    } else if (mode === 'createdAt') {
+      items = [...items].sort((a, b) => b.createdAt - a.createdAt);
+    } else {
+      items = [...items].sort((a, b) => a.sortOrder - b.sortOrder);
+    }
   }
 
   return items;
@@ -307,15 +267,6 @@ async function handleContextMenuSelect(key: string) {
       await navigator.clipboard.writeText(item.content);
       message.success(t('messages.copied'));
     }
-  } else if (key === 'favorite') {
-    const result = await clipboardStore.favoriteItem(item);
-    if (result === 'favorited') {
-      message.success(t('messages.favorited'));
-    } else if (result === 'unfavorited') {
-      message.success(t('messages.unfavorited'));
-    } else {
-      message.error(t('messages.favoriteCategoryNotFound'));
-    }
   } else if (key === 'edit') {
     isEditing.value = true;
     editTitle.value = item.title;
@@ -383,7 +334,6 @@ function cancelEdit() {
             @enter-select-mode="enterSelectModeFromCard"
             @move-to-category="moveToCategory"
             @batch-move-to-category="batchMoveToCategory"
-            @batch-favorite="batchFavorite"
             @batch-lock="batchLock"
             @batch-delete="deleteSelected"
           />
@@ -400,7 +350,6 @@ function cancelEdit() {
       :show="contextMenuShow"
       :options="[
         { label: t('contextMenu.copy'), key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 14 }) },
-        { label: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? t('contextMenu.unfavorite') : t('contextMenu.favorite'), key: 'favorite', icon: () => h(NIcon, { component: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? StarFilledIcon : StarIcon, size: 14, style: { color: contextMenuItem?.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE ? '#F39C12' : '#333' } }) },
         ...(contextMenuItem && !contextMenuItem.imageBase64 ? [
           { label: t('contextMenu.edit'), key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
         ] : []),

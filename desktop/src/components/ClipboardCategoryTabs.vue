@@ -6,8 +6,8 @@ import type { ClipboardCategory } from '../types';
 import { NDropdown, useMessage, useDialog, type DropdownOption } from 'naive-ui';
 import { h } from 'vue';
 import { NIcon } from 'naive-ui';
-import { CreateOutline as EditIcon, TrashOutline as DeleteIcon, StarOutline as StarIcon, LockClosedOutline as LockIcon } from '@vicons/ionicons5';
-import { FREE_CATEGORY_LIMIT, isBuiltinClipboardCategory, BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
+import { CreateOutline as EditIcon, TrashOutline as DeleteIcon, LockClosedOutline as LockIcon } from '@vicons/ionicons5';
+import { FREE_CATEGORY_LIMIT, isBuiltinClipboardCategory } from '../types';
 
 const store = useClipboardStore();
 const message = useMessage();
@@ -195,7 +195,7 @@ onUnmounted(() => {
       全部
     </button>
 
-    <!-- 内置分类 tab：文本、图像、收藏，固定不可拖拽 -->
+    <!-- 内置分类 tab：文本、图像，固定不可拖拽 -->
     <button
       v-for="cat in builtinList"
       :key="cat.id"
@@ -203,8 +203,6 @@ onUnmounted(() => {
       @click="selectCategory(cat.id)"
       @contextmenu="handleTabContextMenu($event, cat)"
     >
-      <!-- 收藏分类显示特殊图标 -->
-      <NIcon v-if="cat.id === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE" :component="StarIcon" size="14" :style="{ marginRight: '4px', color: store.selectedCategoryId === cat.id ? cat.color : cat.color }" />
       <template v-if="editingCategoryId === cat.id">
         <input
           v-model="editingName"

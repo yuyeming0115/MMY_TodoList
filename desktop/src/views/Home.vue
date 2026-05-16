@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import {
   NButton, NIcon, NInput, NDropdown,
-  useMessage
+  useMessage, useDialog
 } from 'naive-ui';
 import {
   AddOutline as AddIcon, SettingsOutline as SettingsIcon,
@@ -11,7 +11,8 @@ import {
   ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon,
   ListOutline as ListIcon, ClipboardOutline as ClipboardIcon,
   CopyOutline as CopyIcon, LayersOutline as StackedIcon,
-  SwapVerticalOutline as SortIcon
+  SwapVerticalOutline as SortIcon,
+  CreateOutline as EditIcon, TrashOutline as DeleteIcon, LockClosedOutline as LockIcon
 } from '@vicons/ionicons5';
 import { h } from 'vue';
 import draggable from 'vuedraggable';
@@ -30,7 +31,8 @@ import SettingsPage from '../components/SettingsPage.vue';
 import SearchBar from '../components/SearchBar.vue';
 import TaskCard from '../components/TaskCard.vue';
 import TaskFormModal from '../components/TaskFormModal.vue';
-import type { Task } from '../types';
+import type { Task, ClipboardCategory } from '../types';
+import { isBuiltinClipboardCategory } from '../types';
 
 // 检测是否为 Windows
 const isWindows = navigator.userAgent.toLowerCase().includes('windows');
@@ -77,7 +79,75 @@ const settingsStore = useSettingsStore();
 const clipboardStore = useClipboardStore();
 const appWindow = getCurrentWindow();
 const message = useMessage();
+const dialog = useDialog();
 const { t } = useI18n();
+
+// 剪贴板分类右键菜单
+const clipCatContextMenuShow = ref(false);
+const clipCatContextMenuX = ref(0);
+const clipCatContextMenuY = ref(0);
+const clipCatContextCat = ref<ClipboardCategory | null>(null);
+
+const clipCatContextMenuOptions = computed(() => {
+  if (!clipCatContextCat.value) return [];
+  const cat = clipCatContextCat.value;
+  const isBuiltin = isBuiltinClipboardCategory(cat.id);
+  const options: any[] = [
+    { label: '编辑名称', key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 14 }) },
+    { label: '设置颜色', key: 'color' },
+    { label: cat.locked ? '解锁分类' : '锁定分类', key: 'lock', icon: () => h(NIcon, { component: LockIcon, size: 14, style: { color: cat.locked ? '#E05252' : '#333' } }) },
+  ];
+  if (!isBuiltin) {
+    options.push({ type: 'divider', key: 'd1' });
+    options.push({ label: '删除分类', key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 14, style: { color: '#E05252' } }) });
+  }
+  return options;
+});
+
+function handleClipCatContextMenu(e: MouseEvent, cat: ClipboardCategory) {
+  e.preventDefault();
+  clipCatContextCat.value = cat;
+  clipCatContextMenuX.value = e.clientX;
+  clipCatContextMenuY.value = e.clientY;
+  clipCatContextMenuShow.value = true;
+}
+
+async function handleClipCatMenuSelect(key: string) {
+  clipCatContextMenuShow.value = false;
+  if (!clipCatContextCat.value) return;
+  const cat = clipCatContextCat.value;
+
+  if (key === 'edit') {
+    // 编辑名称：切换到正常模式进行编辑
+    isPinned.value = false;
+    // 选中该分类
+    clipboardStore.selectCategory(cat.id);
+    message.info('请在正常模式下编辑分类名称');
+  } else if (key === 'color') {
+    // 设置颜色：切换到正常模式
+    isPinned.value = false;
+    clipboardStore.selectCategory(cat.id);
+    message.info('请在正常模式下设置分类颜色');
+  } else if (key === 'lock') {
+    const result = await clipboardStore.toggleCategoryLock(cat);
+    message.success(result === 'locked' ? '分类已锁定，该分类下所有卡片禁止删除' : '分类已解锁');
+  } else if (key === 'delete') {
+    deleteClipboardCategory(cat);
+  }
+}
+
+function deleteClipboardCategory(cat: ClipboardCategory) {
+  dialog.warning({
+    title: '确认删除',
+    content: `确定删除分类"${cat.name}"及其所有剪贴板项目？`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      await clipboardStore.removeCategory(cat.id);
+      message.success('删除成功');
+    }
+  });
+}
 
 // 窗口置顶状态
 const isPinned = ref(false);
@@ -89,9 +159,6 @@ const COMPACT_WIDTH = 400;
 
 // 面板切换
 const activePanel = ref<'tasks' | 'clipboard'>('tasks');
-
-// 精简模式下的剪贴板分类过滤
-const compactClipFilter = ref<string | null>(null);
 
 async function switchPanel(panel: 'tasks' | 'clipboard') {
   // 如果在设置页面，先退出设置页面
@@ -875,22 +942,51 @@ async function hideToTray() {
                   </div>
                 </div>
 
-                <!-- 精简模式：剪贴板迷你分类切换器 -->
+                <!-- 精简模式：剪贴板迷你分类切换器 - 与正常模式同步 -->
                 <div v-if="isPinned" class="compact-clip-filter">
+                  <!-- 全部 tab -->
                   <button
-                    :class="['clip-pill', { active: compactClipFilter === null }]"
-                    @click="compactClipFilter = null"
+                    :class="['clip-tab', 'all-tab', { active: clipboardStore.selectedCategoryId === null }]"
+                    @click="clipboardStore.selectCategory(null)"
                   >{{ t('compact.all') }}</button>
+
+                  <!-- 内置分类 tab -->
                   <button
                     v-for="cat in clipboardStore.builtinCategories"
                     :key="cat.id"
-                    :class="['clip-pill', { active: compactClipFilter === cat.id }]"
-                    :style="{ '--pill-color': cat.color }"
-                    @click="compactClipFilter = cat.id"
-                  >{{ cat.name === '文本' || cat.name === 'Text' ? t('compact.text') : cat.name === '图像' || cat.name === 'Image' ? t('compact.image') : t('compact.star') }}</button>
+                    :class="['clip-tab', 'builtin-tab', { active: clipboardStore.selectedCategoryId === cat.id }]"
+                    :style="{ '--tab-color': cat.color }"
+                    @click="clipboardStore.selectCategory(cat.id)"
+                    @contextmenu="handleClipCatContextMenu($event, cat)"
+                  >{{ cat.name === '文本' || cat.name === 'Text' ? t('compact.text') : t('compact.image') }}</button>
+
+                  <!-- 自定义分类 tab -->
+                  <button
+                    v-for="cat in clipboardStore.customCategories"
+                    :key="cat.id"
+                    :class="['clip-tab', { active: clipboardStore.selectedCategoryId === cat.id }]"
+                    :style="{ '--tab-color': cat.color }"
+                    @click="clipboardStore.selectCategory(cat.id)"
+                    @contextmenu="handleClipCatContextMenu($event, cat)"
+                  >
+                    <span v-if="cat.locked" style="margin-right: 2px;">🔒</span>
+                    <span :style="{ color: cat.color }">{{ cat.name }}</span>
+                  </button>
                 </div>
 
-                <ClipboardPanel :compact="isPinned" :category-filter="compactClipFilter" :stacked="isClipboardStacked" :stack-gap="settingsStore.settings.clipboardStackGap" />
+                <!-- 剪贴板分类右键菜单 -->
+                <NDropdown
+                  placement="bottom-start"
+                  trigger="manual"
+                  :x="clipCatContextMenuX"
+                  :y="clipCatContextMenuY"
+                  :show="clipCatContextMenuShow"
+                  :options="clipCatContextMenuOptions"
+                  @select="handleClipCatMenuSelect"
+                  @clickoutside="clipCatContextMenuShow = false"
+                />
+
+                <ClipboardPanel :compact="isPinned" :stacked="isClipboardStacked" :stack-gap="settingsStore.settings.clipboardStackGap" />
               </div>
 
               <!-- 设置页面 -->
@@ -1382,60 +1478,77 @@ html.dark .view-toggle-btn:hover {
   padding: 0 12px;
 }
 
-/* 精简模式剪贴板分类 pill */
+/* 精简模式剪贴板分类 - 与正常模式 CategoryTabs 同步样式 */
 .compact-clip-filter {
   display: flex;
+  align-items: center;
   gap: 4px;
-  padding: 2px 0 6px;
+  padding: 4px 0 8px;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.clip-pill {
-  padding: 2px 10px;
-  border: 1px solid #d0d0d0;
-  border-radius: 12px;
+.compact-clip-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.clip-tab {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 4px;
   background: transparent;
-  color: #666;
-  font-size: 12px;
+  color: #888;
   cursor: pointer;
-  transition: all 0.15s;
-  line-height: 1.4;
+  font-size: 14px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
 }
 
-.clip-pill:hover {
-  background: rgba(74, 144, 217, 0.1);
-  border-color: #4A90D9;
+.clip-tab:hover {
+  background: rgba(74, 144, 217, 0.08);
   color: #4A90D9;
 }
 
-.clip-pill.active {
-  background: var(--pill-color, #4A90D9);
-  border-color: var(--pill-color, #4A90D9);
-  color: #fff;
+.clip-tab.active {
+  color: var(--tab-color, #4A90D9);
+  border-bottom: 2px solid var(--tab-color, #4A90D9);
+  border-radius: 4px 4px 0 0;
+}
+
+.all-tab.active {
+  background: rgba(74, 144, 217, 0.15);
   font-weight: 600;
+  color: #4A90D9;
 }
 
-.clip-pill:first-child.active {
-  background: #4A90D9;
-  border-color: #4A90D9;
+.builtin-tab.active {
+  background: rgba(74, 144, 217, 0.12);
 }
 
-html.dark .clip-pill {
-  border-color: #444;
+html.dark .clip-tab {
   color: #999;
 }
 
-html.dark .clip-pill:hover {
-  background: rgba(74, 144, 217, 0.15);
-  border-color: #4A90D9;
-  color: #4A90D9;
+html.dark .clip-tab:hover {
+  background: rgba(74, 144, 217, 0.1);
+  color: #5BA4F5;
 }
 
-html.dark .clip-pill.active {
-  color: #F87171;
-  background: rgba(248, 113, 113, 0.15);
-  border-color: #F87171;
+html.dark .clip-tab.active {
+  color: var(--tab-color, #5BA4F5);
+  border-bottom-color: var(--tab-color, #5BA4F5);
+}
+
+html.dark .all-tab.active {
+  background: rgba(74, 144, 217, 0.18);
+  color: #5BA4F5;
+}
+
+html.dark .builtin-tab.active {
+  background: rgba(74, 144, 217, 0.15);
 }
 
 /* 任务列表（唯一可滚动区域） */

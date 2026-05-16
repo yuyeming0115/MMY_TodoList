@@ -2,7 +2,7 @@
 import { NIcon, NDropdown, NInput, useMessage } from 'naive-ui';
 import { h, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import {
-  TrashOutline as DeleteIcon, CopyOutline as CopyIcon, StarOutline as StarIcon, Star as StarFilledIcon,
+  TrashOutline as DeleteIcon, CopyOutline as CopyIcon,
   CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
   ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon, LockClosedOutline as LockIcon,
 } from '@vicons/ionicons5';
@@ -28,7 +28,6 @@ const emit = defineEmits<{
   (e: 'enter-select-mode'): void;
   (e: 'move-to-category', item: ClipboardItem, categoryId: string): void;
   (e: 'batch-move-to-category', categoryId: string): void;
-  (e: 'batch-favorite'): void;
   (e: 'batch-lock'): void;
   (e: 'batch-delete'): void;
 }>();
@@ -55,7 +54,6 @@ onUnmounted(() => {
   dragHandleRef.value?.removeEventListener('mousedown', blockSortableMousedown, true);
 });
 
-const isFavorite = computed(() => props.item.categoryId === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
 const isLocked = computed(() => clipboardStore.isItemLocked(props.item));
 const isTextItem = computed(() => !props.item.imageBase64 && !props.item.imagePath);
 const isBuiltinCategory = computed(() =>
@@ -122,7 +120,6 @@ const categoryOptions = computed(() => {
 const contextMenuOptions = computed(() => {
   const options: any[] = [
     { label: t('contextMenu.copy'), key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
-    { label: isFavorite.value ? t('contextMenu.unfavorite') : t('contextMenu.favorite'), key: 'favorite', icon: () => h(NIcon, { component: isFavorite.value ? StarFilledIcon : StarIcon, size: 16, style: { color: isFavorite.value ? '#F39C12' : '#333' } }) },
     { label: isLocked.value ? t('contextMenu.unlock') : t('contextMenu.lock'), key: 'lock', icon: () => h(NIcon, { component: LockIcon, size: 16, style: { color: isLocked.value ? '#E05252' : '#333' } }) },
   ];
 
@@ -136,8 +133,8 @@ const contextMenuOptions = computed(() => {
     options.push({ label: t('contextMenu.openFolder'), key: 'openFolder', icon: () => h(NIcon, { component: FolderOpenIcon, size: 16 }) });
   }
 
-  // 内置分类（文本/图像）且非收藏，显示设置过期时间
-  if (isBuiltinCategory.value && !isFavorite.value) {
+  // 内置分类（文本/图像）显示设置过期时间
+  if (isBuiltinCategory.value) {
     options.push({
       key: 'expiry',
       label: t('contextMenu.setExpiry'),
@@ -219,19 +216,8 @@ async function copyContent() {
   }
 }
 
-async function handleFavorite() {
-  const result = await clipboardStore.favoriteItem(props.item);
-  if (result === 'favorited') {
-    message.success(t('messages.favorited'));
-  } else if (result === 'unfavorited') {
-    message.success(t('messages.unfavorited'));
-  } else {
-    message.error(t('messages.favoriteCategoryNotFound'));
-  }
-}
-
 function handleClick(e: MouseEvent) {
-  // 选择模式下点击触发选中（收藏卡也允许选中）
+  // 选择模式下点击触发选中
   if (props.showCheckbox || e.ctrlKey || e.metaKey || e.shiftKey) {
     emit('toggle-select', props.item.id, e.shiftKey);
     return;
@@ -273,14 +259,6 @@ async function handleMenuSelect(key: string) {
     return;
   }
   if (key === 'copy') copyContent();
-  if (key === 'favorite') {
-    // 选择模式下批量收藏
-    if (props.showCheckbox) {
-      emit('batch-favorite');
-    } else {
-      handleFavorite();
-    }
-  }
   if (key === 'lock') {
     // 选择模式下批量锁定
     if (props.showCheckbox) {
@@ -474,9 +452,6 @@ async function handleCrossAppDragEnd(e: DragEvent) {
 
     <!-- 锁定角标 -->
     <div v-if="isLocked" class="locked-badge">🔒</div>
-
-    <!-- 收藏角标 -->
-    <div v-if="isFavorite" class="favorite-badge">⭐</div>
 
     <!-- 过期时间提示 -->
     <div v-if="expiryLabel" class="expiry-badge" :class="{ warning: isExpiringSoon }">
@@ -853,15 +828,7 @@ html.dark .cross-app-drag-handle:hover {
   color: #4A90D9;
 }
 
-/* 收藏角标 */
-.favorite-badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  font-size: 14px;
-  z-index: 6;
-  pointer-events: none;
-}
+/* 锁定角标 */
 
 /* 锁定角标 */
 .locked-badge {

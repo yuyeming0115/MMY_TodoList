@@ -301,33 +301,6 @@ export const useClipboardStore = defineStore('clipboard', () => {
     }
   }
 
-  // 收藏/取消收藏项目，返回操作结果：'favorited' | 'unfavorited' | 'error'
-  async function favoriteItem(item: ClipboardItem): Promise<'favorited' | 'unfavorited' | 'error'> {
-    const favoriteCat = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE);
-    if (!favoriteCat) return 'error';
-
-    if (item.categoryId === favoriteCat.id) {
-      // 已经在收藏中，取消收藏（移动到文本分类）
-      const textCat = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.TEXT);
-      if (!textCat) return 'error';
-      item.categoryId = textCat.id;
-      // 恢复默认30天过期
-      item.expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
-      await updateClipboardItem(item);
-      const index = items.value.findIndex(i => i.id === item.id);
-      if (index !== -1) items.value[index] = item;
-      return 'unfavorited';
-    } else {
-      // 移动到收藏分类，清除过期时间（收藏永不过期）
-      item.categoryId = favoriteCat.id;
-      item.expiresAt = null;
-      await updateClipboardItem(item);
-      const index = items.value.findIndex(i => i.id === item.id);
-      if (index !== -1) items.value[index] = item;
-      return 'favorited';
-    }
-  }
-
   // 从剪贴板粘贴
   async function pasteFromClipboard(message?: { success: (msg: string) => void; warning: (msg: string) => void }) {
     const textCategoryId = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.TEXT)?.id
@@ -449,7 +422,6 @@ export const useClipboardStore = defineStore('clipboard', () => {
     removeItems,
     reorderItems,
     pasteFromClipboard,
-    favoriteItem,
     setItemExpiry,
     cleanupExpiredItems,
     lockItem,

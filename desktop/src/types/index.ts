@@ -85,7 +85,6 @@ export interface ClipboardItem {
 export const BUILTIN_CLIPBOARD_CATEGORIES = {
   TEXT: 'builtin_text',
   IMAGE: 'builtin_image',
-  FAVORITE: 'builtin_favorite',
 } as const;
 
 export const BUILTIN_CLIPBOARD_CATEGORY_IDS = Object.values(BUILTIN_CLIPBOARD_CATEGORIES);
@@ -94,7 +93,6 @@ export const BUILTIN_CLIPBOARD_CATEGORY_IDS = Object.values(BUILTIN_CLIPBOARD_CA
 export const BUILTIN_CLIPBOARD_CATEGORY_META = [
   { id: BUILTIN_CLIPBOARD_CATEGORIES.TEXT, name: '文本', color: '#4A90D9', sortOrder: 0 },
   { id: BUILTIN_CLIPBOARD_CATEGORIES.IMAGE, name: '图像', color: '#28C840', sortOrder: 1 },
-  { id: BUILTIN_CLIPBOARD_CATEGORIES.FAVORITE, name: '收藏', color: '#F39C12', sortOrder: 2 },
 ] as const;
 
 export function isBuiltinClipboardCategory(id: string): boolean {
