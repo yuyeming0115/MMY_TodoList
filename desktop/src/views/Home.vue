@@ -949,6 +949,7 @@ html.dark .app-layout {
   background: #f5f5f5;
   border-bottom: 1px solid #e0e0e0;
   padding: 8px 12px;
+  border-radius: 10px 10px 0 0;
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
