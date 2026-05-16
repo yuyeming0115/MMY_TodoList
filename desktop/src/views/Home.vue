@@ -1278,27 +1278,30 @@ html.dark .header {
 
 /* Windows 按钮样式 */
 .win-controls {
-  gap: 2px;
+  gap: 4px;
 }
 
 .win-controls .win-btn {
   width: 28px;
   height: 28px;
   padding: 0;
-  border-radius: 0;
+  border-radius: 6px;
 }
 
 .win-controls .win-btn:hover {
   background: rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
 }
 
 html.dark .win-controls .win-btn:hover {
   background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
 }
 
 .win-controls .close-btn:hover {
   background: #e81123 !important;
   color: #fff !important;
+  border-radius: 6px;
 }
 
 /* 任务搜索行 */
