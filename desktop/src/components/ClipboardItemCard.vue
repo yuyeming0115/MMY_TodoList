@@ -366,19 +366,23 @@ async function handleCrossAppDragStart(e: DragEvent) {
   e.dataTransfer.effectAllowed = 'copy';
 
   if (props.item.imagePath) {
-    // 有本地文件路径：用文件 URI 实现真正拖拽到外部应用
+    // 有本地文件路径：写入 CF_HDROP + PNG + DIB，模拟 Ditto
+    const { invoke } = await import('@tauri-apps/api/core');
+    try {
+      await invoke('get_image_for_drag', { id: props.item.id });
+    } catch {
+      // 静默失败
+    }
     const filePath = props.item.imagePath.replace(/\\/g, '/');
     e.dataTransfer.setData('text/uri-list', `file:///${filePath}`);
-    e.dataTransfer.setData('text/plain', props.item.imagePath);
   } else if (props.item.imageBase64) {
-    // 无本地路径（仅 base64）：保持剪贴板方案
+    // 无本地路径（仅 base64）：写入 DIB
     const { invoke } = await import('@tauri-apps/api/core');
     try {
       const base64Data = props.item.imageBase64.replace(/^data:image\/\w+;base64,/, '');
       await invoke('write_image_to_clipboard', { base64: base64Data });
-      message.info(t('messages.imageCopiedToClipboard'));
     } catch {
-      message.error(t('messages.copyFailed'));
+      // 静默失败
     }
   } else {
     // 文本
@@ -386,8 +390,23 @@ async function handleCrossAppDragStart(e: DragEvent) {
   }
 }
 
-function handleCrossAppDragEnd(_e: DragEvent) {
+// 拖拽结束：如果是图片且拖拽成功，自动触发 Ctrl+V 粘贴
+async function handleCrossAppDragEnd(e: DragEvent) {
   isCrossDragging.value = false;
+
+  // 仅图片类型 + 拖拽成功（dropEffect 不是 'none'）时自动粘贴
+  if (
+    (props.item.imagePath || props.item.imageBase64) &&
+    e.dataTransfer?.dropEffect &&
+    e.dataTransfer.dropEffect !== 'none'
+  ) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    try {
+      await invoke('simulate_ctrl_v');
+    } catch {
+      message.warning('拖拽完成，请手动粘贴 (Ctrl+V)');
+    }
+  }
 }
 </script>
 

@@ -304,7 +304,7 @@ pub fn cleanup_expired_items(db: State<'_, Arc<Database>>) -> Result<i64, String
     Ok(deleted as i64)
 }
 
-/// 准备图片用于跨应用拖拽：复制到剪贴板并返回提示
+/// 准备图片用于跨应用拖拽：同时写入 CF_HDROP（文件路径）+ PNG + CF_DIB，模拟 Ditto 的行为
 #[tauri::command]
 pub fn get_image_for_drag(db: State<'_, Arc<Database>>, id: String) -> Result<String, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
@@ -320,25 +320,41 @@ pub fn get_image_for_drag(db: State<'_, Arc<Database>>, id: String) -> Result<St
     let bytes = std::fs::read(&image_path)
         .map_err(|e| format!("读取图片失败: {}", e))?;
 
-    // 直接写入系统剪贴板（复用 write_image_to_clipboard 的逻辑）
     #[cfg(target_os = "windows")]
     {
-        use clipboard_win::{Clipboard, formats, raw};
+        use clipboard_win::{Clipboard, formats, raw, formats::FileList, Setter};
         use image::codecs::bmp::BmpEncoder;
+        use image::codecs::png::PngEncoder;
+        use image::ImageEncoder;
 
         let img = image::load_from_memory(&bytes).map_err(|e| format!("图片解码失败: {}", e))?;
         let rgba = img.into_rgba8();
         let (w, h) = rgba.dimensions();
 
+        let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
+
+        // 1. CF_HDROP：写入本地文件路径（微信等应用优先接受这个）
+        FileList.write_clipboard(&[image_path.as_str()] as &[&str])
+            .map_err(|e| format!("写入 CF_HDROP 失败: {}", e))?;
+
+        // 2. PNG 注册格式：很多应用（浏览器、编辑器）优先读取这个
+        if let Some(png_fmt) = clipboard_win::register_format("PNG") {
+            let mut png_buf = Vec::new();
+            if PngEncoder::new(&mut png_buf)
+                .write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)
+                .is_ok()
+            {
+                raw::set(png_fmt.get(), &png_buf).ok();
+            }
+        }
+
+        // 3. CF_DIB：作为兜底（记事本等只接受 DIB 的应用）
         let mut bmp_buf = Vec::new();
         let mut encoder = BmpEncoder::new(&mut bmp_buf);
-        encoder.encode(&rgba, w, h, image::ExtendedColorType::Rgba8)
-            .map_err(|e| format!("BMP 编码失败: {}", e))?;
-
-        let dib_data = &bmp_buf[14..];
-
-        let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
-        raw::set(formats::CF_DIB, dib_data).map_err(|e| format!("写入剪贴板失败: {}", e))?;
+        if encoder.encode(&rgba, w, h, image::ExtendedColorType::Rgba8).is_ok() {
+            let dib_data = &bmp_buf[14..];
+            raw::set(formats::CF_DIB, dib_data).ok();
+        }
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -346,7 +362,7 @@ pub fn get_image_for_drag(db: State<'_, Arc<Database>>, id: String) -> Result<St
         let _ = bytes;
     }
 
-    Ok("图片已复制到剪贴板，请在目标窗口 Ctrl+V 粘贴".to_string())
+    Ok("图片已复制到剪贴板，拖拽到目标窗口即可".to_string())
 }
 
 /// 在文件管理器中打开并选中指定文件

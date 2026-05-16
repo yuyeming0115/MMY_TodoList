@@ -160,6 +160,7 @@ pub fn run() {
             launch_pixpin,
             read_clipboard_image,
             write_image_to_clipboard,
+            simulate_ctrl_v,
             // 快捷键命令
             commands::update_global_shortcut,
         ])
@@ -450,6 +451,75 @@ fn write_image_to_clipboard(base64: String) -> Result<(), String> {
         let _ = bytes;
         Err("不支持的平台".to_string())
     }
+}
+
+/// 模拟 Ctrl+V 粘贴（用于拖拽后自动粘贴）
+#[tauri::command]
+#[cfg(target_os = "windows")]
+fn simulate_ctrl_v() -> Result<(), String> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP,
+        KEYBDINPUT, VIRTUAL_KEY,
+    };
+
+    // 等待目标窗口获得焦点
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    unsafe {
+        let mut inputs: [INPUT; 4] = std::mem::zeroed();
+
+        // Ctrl 按下
+        inputs[0].r#type = INPUT_KEYBOARD;
+        inputs[0].Anonymous.ki = KEYBDINPUT {
+            wVk: VIRTUAL_KEY(0x11), // VK_CONTROL
+            wScan: 0,
+            dwFlags: Default::default(),
+            time: 0,
+            dwExtraInfo: 0,
+        };
+
+        // V 按下
+        inputs[1].r#type = INPUT_KEYBOARD;
+        inputs[1].Anonymous.ki = KEYBDINPUT {
+            wVk: VIRTUAL_KEY(0x56), // V
+            wScan: 0,
+            dwFlags: Default::default(),
+            time: 0,
+            dwExtraInfo: 0,
+        };
+
+        // V 释放
+        inputs[2].r#type = INPUT_KEYBOARD;
+        inputs[2].Anonymous.ki = KEYBDINPUT {
+            wVk: VIRTUAL_KEY(0x56),
+            wScan: 0,
+            dwFlags: KEYEVENTF_KEYUP,
+            time: 0,
+            dwExtraInfo: 0,
+        };
+
+        // Ctrl 释放
+        inputs[3].r#type = INPUT_KEYBOARD;
+        inputs[3].Anonymous.ki = KEYBDINPUT {
+            wVk: VIRTUAL_KEY(0x11),
+            wScan: 0,
+            dwFlags: KEYEVENTF_KEYUP,
+            time: 0,
+            dwExtraInfo: 0,
+        };
+
+        let sent = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        if sent == 0 {
+            return Err("发送按键事件失败".to_string());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn simulate_ctrl_v() -> Result<(), String> {
+    Err("仅支持 Windows 平台".to_string())
 }
 
 /// 设置系统托盘菜单
