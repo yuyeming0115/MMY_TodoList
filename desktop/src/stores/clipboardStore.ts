@@ -301,6 +301,16 @@ export const useClipboardStore = defineStore('clipboard', () => {
     }
   }
 
+  // 移动项目到最顶部
+  async function moveItemToTop(item: ClipboardItem): Promise<void> {
+    const categoryItems = items.value.filter(i => i.categoryId === item.categoryId);
+    const minSort = Math.min(...categoryItems.map(i => i.sortOrder));
+    item.sortOrder = (minSort || 0) - 1;
+    await updateClipboardItem(item);
+    const index = items.value.findIndex(i => i.id === item.id);
+    if (index !== -1) items.value[index] = item;
+  }
+
   // 从剪贴板粘贴
   async function pasteFromClipboard(message?: { success: (msg: string) => void; warning: (msg: string) => void }) {
     const textCategoryId = categories.value.find(c => c.id === BUILTIN_CLIPBOARD_CATEGORIES.TEXT)?.id
@@ -433,5 +443,6 @@ export const useClipboardStore = defineStore('clipboard', () => {
     isItemInLockedCategory,
     isItemLocked,
     setSortMode,
+    moveItemToTop,
   };
 });

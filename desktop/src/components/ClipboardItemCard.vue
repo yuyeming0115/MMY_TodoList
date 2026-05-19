@@ -5,6 +5,7 @@ import {
   TrashOutline as DeleteIcon, CopyOutline as CopyIcon,
   CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
   ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon, LockClosedOutline as LockIcon,
+  ArrowUpOutline as TopIcon,
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   (e: 'batch-move-to-category', categoryId: string): void;
   (e: 'batch-lock'): void;
   (e: 'batch-delete'): void;
+  (e: 'move-to-top', item: ClipboardItem): void;
 }>();
 
 const message = useMessage();
@@ -121,6 +123,7 @@ const contextMenuOptions = computed(() => {
   const options: any[] = [
     { label: t('contextMenu.copy'), key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
     { label: isLocked.value ? t('contextMenu.unlock') : t('contextMenu.lock'), key: 'lock', icon: () => h(NIcon, { component: LockIcon, size: 16, style: { color: isLocked.value ? '#E05252' : '#333' } }) },
+    { label: t('contextMenu.moveToTop'), key: 'moveToTop', icon: () => h(NIcon, { component: TopIcon, size: 16 }) },
   ];
 
   // 只有文本类型才显示编辑
@@ -232,6 +235,23 @@ function handleContextMenu(e: MouseEvent) {
   showContextMenu.value = true;
 }
 
+// ESC 键关闭右键菜单
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showContextMenu.value) {
+    showContextMenu.value = false;
+  }
+}
+
+onMounted(() => {
+  dragHandleRef.value?.addEventListener('mousedown', blockSortableMousedown, true);
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  dragHandleRef.value?.removeEventListener('mousedown', blockSortableMousedown, true);
+  window.removeEventListener('keydown', handleKeydown);
+});
+
 function setExpiry(key: string) {
   const now = Date.now();
   let expiresAt: number | null = null;
@@ -267,6 +287,10 @@ async function handleMenuSelect(key: string) {
       const result = await clipboardStore.toggleItemLock(props.item);
       message.success(result === 'locked' ? t('messages.locked') : t('messages.unlocked'));
     }
+  }
+  if (key === 'moveToTop') {
+    emit('move-to-top', props.item);
+    message.success(t('messages.moved'));
   }
   if (key === 'edit') startEdit();
   if (key === 'openFolder') openImageFolder();

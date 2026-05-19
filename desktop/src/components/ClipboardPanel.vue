@@ -101,6 +101,11 @@ function moveToCategory(item: ClipboardItem, categoryId: string) {
   clipboardStore.updateItem(item);
 }
 
+// 移动到最顶部
+function moveItemToTop(item: ClipboardItem) {
+  clipboardStore.moveItemToTop(item);
+}
+
 // 批量移动分类
 async function batchMoveToCategory(categoryId: string) {
   const ids = [...selectedIds.value];
@@ -336,6 +341,7 @@ function cancelEdit() {
             @batch-move-to-category="batchMoveToCategory"
             @batch-lock="batchLock"
             @batch-delete="deleteSelected"
+            @move-to-top="moveItemToTop"
           />
         </div>
       </template>

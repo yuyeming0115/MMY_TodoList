@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, h, watch, nextTick } from 'vue';
+import { ref, computed, h, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { NIcon, NCheckbox, NDropdown, NDatePicker, NPopover, NModal, NButton } from 'naive-ui';
 import {
   StarOutline as StarOutlineIcon,
@@ -263,6 +263,21 @@ function handleContextMenu(e: MouseEvent) {
   contextMenuY.value = e.clientY;
   showContextMenu.value = true;
 }
+
+// ESC 键关闭右键菜单
+function handleEscKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showContextMenu.value) {
+    showContextMenu.value = false;
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleEscKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleEscKeydown);
+});
 
 // 处理菜单选择
 function handleMenuSelect(key: string) {

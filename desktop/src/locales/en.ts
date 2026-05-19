@@ -45,6 +45,7 @@ export default {
     openFolder: 'Open image folder',
     setExpiry: 'Set expiry time',
     moveToCategory: 'Move to category',
+    moveToTop: 'Move to top',
     enterSelectMode: 'Enter select mode',
     delete: 'Delete',
     cleanupExpired: 'Cleanup expired items',

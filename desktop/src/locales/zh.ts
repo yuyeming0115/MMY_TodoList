@@ -45,6 +45,7 @@ export default {
     openFolder: '打开图片所在文件夹',
     setExpiry: '设置过期时间',
     moveToCategory: '移动到分类',
+    moveToTop: '移动到最顶部',
     enterSelectMode: '进入选择模式',
     delete: '删除',
     cleanupExpired: '清理已过期项目',
