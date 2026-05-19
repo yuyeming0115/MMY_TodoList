@@ -9,6 +9,7 @@ import {
   SunnyOutline as LightIcon, MoonOutline as DarkIcon,
   CloseOutline as CloseIcon, RemoveOutline as MinusIcon,
   ExpandOutline as MaximizeIcon, ContractOutline as RestoreIcon,
+  FlashOutline as CompactIcon,
   ListOutline as ListIcon, ClipboardOutline as ClipboardIcon,
   CopyOutline as CopyIcon, LayersOutline as StackedIcon,
   SwapVerticalOutline as SortIcon,
@@ -119,13 +120,13 @@ async function handleClipCatMenuSelect(key: string) {
 
   if (key === 'edit') {
     // 编辑名称：切换到正常模式进行编辑
-    isPinned.value = false;
+    isCompactMode.value = false;
     // 选中该分类
     clipboardStore.selectCategory(cat.id);
     message.info('请在正常模式下编辑分类名称');
   } else if (key === 'color') {
     // 设置颜色：切换到正常模式
-    isPinned.value = false;
+    isCompactMode.value = false;
     clipboardStore.selectCategory(cat.id);
     message.info('请在正常模式下设置分类颜色');
   } else if (key === 'lock') {
@@ -150,9 +151,13 @@ function deleteClipboardCategory(cat: ClipboardCategory) {
 }
 
 // 窗口置顶状态
-const isPinned = ref(false);
-// 置顶前的窗口尺寸
-const prePinSize = ref<{ width: number; height: number } | null>(null);
+const isAlwaysOnTop = ref(false);
+
+// 精简模式状态
+const isCompactMode = ref(false);
+
+// 精简前的窗口尺寸（用于恢复）
+const preCompactSize = ref<{ width: number; height: number } | null>(null);
 
 // 精简模式下窗口尺寸
 const COMPACT_WIDTH = 400;
@@ -193,25 +198,34 @@ async function handlePasteClipboard() {
   });
 }
 
-// 切换窗口置顶 + 精简模式
-async function togglePin() {
+// 切换窗口置顶（不影响界面样式）
+async function toggleAlwaysOnTop() {
   try {
-    isPinned.value = !isPinned.value;
-    await appWindow.setAlwaysOnTop(isPinned.value);
+    isAlwaysOnTop.value = !isAlwaysOnTop.value;
+    await appWindow.setAlwaysOnTop(isAlwaysOnTop.value);
+  } catch (e) {
+    console.error('置顶失败:', e);
+  }
+}
 
-    if (isPinned.value) {
-      // 进入精简模式：保存当前尺寸，缩小窗口
+// 切换精简模式（控制窗口尺寸和界面样式）
+async function toggleCompactMode() {
+  try {
+    isCompactMode.value = !isCompactMode.value;
+
+    if (isCompactMode.value) {
+      // 进入精简模式：缩小窗口
       const size = await appWindow.innerSize();
-      prePinSize.value = { width: size.width, height: size.height };
+      preCompactSize.value = { width: size.width, height: size.height };
       await appWindow.setSize(new LogicalSize(COMPACT_WIDTH, 400));
     } else {
       // 退出精简模式：恢复之前尺寸
-      if (prePinSize.value) {
-        await appWindow.setSize(new LogicalSize(prePinSize.value.width, prePinSize.value.height));
+      if (preCompactSize.value) {
+        await appWindow.setSize(new LogicalSize(preCompactSize.value.width, preCompactSize.value.height));
       }
     }
   } catch (e) {
-    console.error('置顶失败:', e);
+    console.error('切换精简模式失败:', e);
   }
 }
 
@@ -723,7 +737,7 @@ async function hideToTray() {
     </div>
 
     <!-- 精简模式下剪贴板操作栏 -->
-    <div v-if="isPinned && activePanel === 'clipboard'" class="compact-clipboard-actions">
+    <div v-if="isCompactMode && activePanel === 'clipboard'" class="compact-clipboard-actions">
       <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
         <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
       </button>
@@ -749,9 +763,9 @@ async function hideToTray() {
         <div class="sidebar-buttons">
           <!-- 置顶按钮（第一个位置） -->
                 <button
-                  :class="['sidebar-btn', { active: isPinned }]"
-                  @click="togglePin"
-                  :title="isPinned ? t('sidebar.unpin') : t('sidebar.pin')"
+                  :class="['sidebar-btn', { active: isAlwaysOnTop }]"
+                  @click="toggleAlwaysOnTop"
+                  :title="isAlwaysOnTop ? t('sidebar.unpin') : t('sidebar.pin')"
                 >
                   📌
                 </button>
@@ -770,6 +784,14 @@ async function hideToTray() {
                   <NIcon :component="ClipboardIcon" size="22" />
                 </button>
                 <div class="sidebar-spacer" />
+                <!-- 精简按钮（底部位置，黑白模式前面） -->
+                <button
+                  :class="['sidebar-btn', { active: isCompactMode }]"
+                  @click="toggleCompactMode"
+                  :title="isCompactMode ? t('sidebar.uncompact') : t('sidebar.compact')"
+                >
+                  <NIcon :component="CompactIcon" size="22" />
+                </button>
                 <button
                   :class="['sidebar-btn', { active: !isDark }]"
                   @click="toggleTheme"
@@ -797,14 +819,14 @@ async function hideToTray() {
             <!-- 主内容区 -->
             <div class="main-content">
               <!-- 任务面板 -->
-              <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isPinned }">
+              <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isCompactMode }">
                 <!-- 非精简模式：分类 tabs -->
-                <div v-if="!isPinned" class="panel-tabs" @mousedown="startTabsDrag">
+                <div v-if="!isCompactMode" class="panel-tabs" @mousedown="startTabsDrag">
                   <CategoryTabs />
                 </div>
 
                 <!-- 非精简模式：搜索行 -->
-                <div v-if="!isPinned" class="panel-search-row">
+                <div v-if="!isCompactMode" class="panel-search-row">
                   <div class="task-search-row">
                     <NButton
                       type="primary" size="small"
@@ -834,7 +856,7 @@ async function hideToTray() {
 
                 <!-- 精简模式：剪贴板迷你分类切换器（任务面板不需要） -->
 
-                <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isPinned, 'stacked-list': taskViewMode === 'stacked' }" :style="taskStackStyle" @contextmenu="handleTaskListContextMenu">
+                <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isCompactMode, 'stacked-list': taskViewMode === 'stacked' }" :style="taskStackStyle" @contextmenu="handleTaskListContextMenu">
                   <div v-if="filteredTasks.length === 0" class="empty">
                     {{ t('empty.noTasks') }}
                   </div>
@@ -861,7 +883,7 @@ async function hideToTray() {
                           :category-color="getCategoryColor(element)"
                           :categories="categoryStore.categories"
                           :is-editing-title="editingTaskId === element.id"
-                          :compact="isPinned"
+                          :compact="isCompactMode"
                           @edit="editTask"
                           @delete="deleteTask"
                           @toggle-status="toggleTaskStatus"
@@ -902,14 +924,14 @@ async function hideToTray() {
               </div>
 
               <!-- 剪贴板面板 -->
-              <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel" :class="{ 'compact-panel': isPinned }">
+              <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel" :class="{ 'compact-panel': isCompactMode }">
                 <!-- 非精简模式：分类 tabs -->
-                <div v-if="!isPinned" class="panel-tabs" @mousedown="startTabsDrag">
+                <div v-if="!isCompactMode" class="panel-tabs" @mousedown="startTabsDrag">
                   <ClipboardCategoryTabs />
                 </div>
 
                 <!-- 非精简模式：搜索行 -->
-                <div v-if="!isPinned" class="panel-search-row">
+                <div v-if="!isCompactMode" class="panel-search-row">
                   <div class="clipboard-search-row">
                     <NButton
                       type="primary" size="small"
@@ -943,7 +965,7 @@ async function hideToTray() {
                 </div>
 
                 <!-- 精简模式：剪贴板迷你分类切换器 - 与正常模式同步 -->
-                <div v-if="isPinned" class="compact-clip-filter">
+                <div v-if="isCompactMode" class="compact-clip-filter">
                   <!-- 全部 tab -->
                   <button
                     :class="['clip-tab', 'all-tab', { active: clipboardStore.selectedCategoryId === null }]"
@@ -986,7 +1008,7 @@ async function hideToTray() {
                   @clickoutside="clipCatContextMenuShow = false"
                 />
 
-                <ClipboardPanel :compact="isPinned" :stacked="isClipboardStacked" :stack-gap="settingsStore.settings.clipboardStackGap" />
+                <ClipboardPanel :compact="isCompactMode" :stacked="isClipboardStacked" :stack-gap="settingsStore.settings.clipboardStackGap" />
               </div>
 
               <!-- 设置页面 -->

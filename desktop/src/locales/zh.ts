@@ -5,6 +5,8 @@ export default {
     clipboard: '剪贴板',
     pin: '置顶',
     unpin: '取消置顶',
+    compact: '精简模式',
+    uncompact: '退出精简',
     toggleTheme: '切换主题',
     toggleLanguage: '切换语言',
     settings: '设置',

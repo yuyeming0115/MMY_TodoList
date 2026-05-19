@@ -5,6 +5,8 @@ export default {
     clipboard: 'Clipboard',
     pin: 'Pin',
     unpin: 'Unpin',
+    compact: 'Compact Mode',
+    uncompact: 'Exit Compact',
     toggleTheme: 'Toggle Theme',
     toggleLanguage: 'Toggle Language',
     settings: 'Settings',
