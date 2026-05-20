@@ -18,6 +18,14 @@ use tauri::{
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 第二个实例启动时，激活第一个实例的窗口
+            if let Some(win) = app.get_webview_window("main") {
+                win.show().unwrap();
+                win.set_focus().unwrap();
+                win.unminimize().unwrap();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
