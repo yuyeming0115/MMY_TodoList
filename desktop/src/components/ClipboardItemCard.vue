@@ -152,15 +152,10 @@ const contextMenuOptions = computed(() => {
     });
   }
 
-  // 移动到分类（有自定义分类时显示）
+  // 移动到分类（直接显示分类列表）
   if (categoryOptions.value.length > 0) {
     options.push({ type: 'divider', key: 'd2' });
-    options.push({
-      key: 'move',
-      label: t('contextMenu.moveToCategory'),
-      icon: () => h(NIcon, { component: FolderIcon, size: 16 }),
-      children: categoryOptions.value,
-    });
+    options.push(...categoryOptions.value);
   }
 
   options.push({ type: 'divider', key: 'd1' });
