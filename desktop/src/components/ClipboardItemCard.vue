@@ -848,12 +848,11 @@ html.dark .cross-app-drag-handle:hover {
 }
 
 /* 锁定角标 */
-
-/* 锁定角标 */
 .locked-badge {
   position: absolute;
-  top: 28px;
+  top: 50%;
   right: 8px;
+  transform: translateY(-50%);
   font-size: 14px;
   z-index: 6;
   pointer-events: none;

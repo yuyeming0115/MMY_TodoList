@@ -30,6 +30,112 @@ const stackStyle = computed(() => {
 const isDragging = ref(false);
 const dragList = ref<ClipboardItem[]>([]);
 
+// 虚拟滚动阈值：低于此数量直接渲染全部
+const VIRTUAL_SCROLL_THRESHOLD = 100;
+
+// 虚拟滚动参数 - 动态高度估算
+const TEXT_ITEM_HEIGHT = 60; // 文字卡片估算高度（约50px卡片 + 12px margin）
+const IMAGE_ITEM_HEIGHT = 140; // 图片卡片估算高度（约120px卡片 + 20px margin）
+const BUFFER_SIZE = 5; // 缓冲区大小
+const scrollTop = ref(0);
+const containerHeight = ref(600);
+const listRef = ref<HTMLElement | null>(null);
+
+// 是否启用虚拟滚动（项目数量超过阈值时启用）
+const useVirtualScroll = computed(() => {
+  return filteredItems.value.length >= VIRTUAL_SCROLL_THRESHOLD && !dragEnabled.value;
+});
+
+// 根据卡片类型估算高度
+function estimateItemHeight(item: ClipboardItem): number {
+  if (item.imageBase64 || item.imagePath) return IMAGE_ITEM_HEIGHT;
+  return TEXT_ITEM_HEIGHT;
+}
+
+// 计算虚拟滚动参数 - 基于动态高度估算
+const totalHeight = computed(() => {
+  return filteredItems.value.reduce((sum, item) => sum + estimateItemHeight(item), 0);
+});
+
+// 计算每个项目的累计高度（用于定位）
+const itemPositions = computed(() => {
+  const positions: number[] = [];
+  let acc = 0;
+  for (const item of filteredItems.value) {
+    positions.push(acc);
+    acc += estimateItemHeight(item);
+  }
+  return positions;
+});
+
+// 根据滚动位置计算起始索引
+const startIndex = computed(() => {
+  if (!useVirtualScroll.value) return 0;
+  // 找到第一个位置大于 scrollTop - BUFFER_SIZE * avgHeight 的项目
+  const threshold = scrollTop.value - TEXT_ITEM_HEIGHT * BUFFER_SIZE;
+  if (threshold <= 0) return 0;
+
+  // 二分查找
+  let lo = 0, hi = itemPositions.value.length;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (itemPositions.value[mid] < threshold) lo = mid + 1;
+    else hi = mid;
+  }
+  return Math.max(0, lo - BUFFER_SIZE);
+});
+
+const endIndex = computed(() => {
+  if (!useVirtualScroll.value) return filteredItems.value.length;
+  const threshold = scrollTop.value + containerHeight.value + TEXT_ITEM_HEIGHT * BUFFER_SIZE;
+  // 找到第一个位置大于 threshold 的项目
+  let lo = startIndex.value, hi = itemPositions.value.length;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (itemPositions.value[mid] < threshold) lo = mid + 1;
+    else hi = mid;
+  }
+  return Math.min(filteredItems.value.length, lo + BUFFER_SIZE);
+});
+
+const visibleItems = computed(() => {
+  // 自定义排序模式或项目数量少时，直接渲染全部
+  if (!useVirtualScroll.value) return filteredItems.value;
+  return filteredItems.value.slice(startIndex.value, endIndex.value);
+});
+
+const offsetY = computed(() => {
+  if (!useVirtualScroll.value || startIndex.value === 0) return 0;
+  return itemPositions.value[startIndex.value] || 0;
+});
+
+// 滚动处理
+function handleScroll(e: Event) {
+  const target = e.target as HTMLElement;
+  scrollTop.value = target.scrollTop;
+}
+
+// 监听容器高度变化
+onMounted(() => {
+  if (listRef.value) {
+    containerHeight.value = listRef.value.clientHeight;
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        containerHeight.value = entry.contentRect.height;
+      }
+    });
+    resizeObserver.observe(listRef.value);
+    // 存储 observer 以便卸载时清理
+    (listRef.value as any)._resizeObserver = resizeObserver;
+  }
+});
+
+onUnmounted(() => {
+  if (listRef.value && (listRef.value as any)._resizeObserver) {
+    (listRef.value as any)._resizeObserver.disconnect();
+  }
+});
+
 // 批量选择
 const selectMode = ref(false);
 const selectedIds = ref(new Set<string>());
@@ -302,12 +408,20 @@ function cancelEdit() {
 </script>
 
 <template>
-  <div class="clipboard-list" :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }" :style="stackStyle">
+  <div
+    ref="listRef"
+    class="clipboard-list"
+    :class="{ 'compact-list': props.compact, 'stacked-list': props.stacked }"
+    :style="stackStyle"
+    @scroll="handleScroll"
+  >
     <div v-if="filteredItems.length === 0" class="empty">
       {{ t('empty.noClipboard') }}
     </div>
+
+    <!-- 自定义排序模式：使用 draggable 全量渲染 -->
     <draggable
-      v-else
+      v-else-if="dragEnabled"
       v-model="dragList"
       :disabled="!dragEnabled"
       item-key="id"
@@ -346,6 +460,71 @@ function cancelEdit() {
         </div>
       </template>
     </draggable>
+
+    <!-- 非虚拟滚动模式：直接渲染全部 -->
+    <div v-else-if="!useVirtualScroll" class="direct-container">
+      <div
+        v-for="item in filteredItems"
+        :key="item.id"
+        class="item-wrapper"
+      >
+        <ClipboardItemCard
+          :item="item"
+          :compact="props.compact"
+          :stacked="props.stacked"
+          :show-checkbox="selectMode || selectedIds.size > 0"
+          :selected="selectedIds.has(item.id)"
+          :selection-anchor="selectionAnchor"
+          @delete="deleteItem"
+          @update-priority="updatePriority"
+          @contextmenu="handleItemContextMenu($event, item)"
+          @toggle-select="toggleSelect"
+          @enter-select-mode="enterSelectModeFromCard"
+          @move-to-category="moveToCategory"
+          @batch-move-to-category="batchMoveToCategory"
+          @batch-lock="batchLock"
+          @batch-delete="deleteSelected"
+          @move-to-top="moveItemToTop"
+        />
+      </div>
+    </div>
+
+    <!-- 虚拟滚动模式（项目数量 >= 100）：虚拟滚动渲染 -->
+    <div
+      v-else
+      class="virtual-container"
+      :style="{ height: totalHeight + 'px' }"
+    >
+      <div
+        class="virtual-content"
+        :style="{ paddingTop: offsetY + 'px' }"
+      >
+        <div
+          v-for="item in visibleItems"
+          :key="item.id"
+          class="item-wrapper"
+        >
+          <ClipboardItemCard
+            :item="item"
+            :compact="props.compact"
+            :stacked="props.stacked"
+            :show-checkbox="selectMode || selectedIds.size > 0"
+            :selected="selectedIds.has(item.id)"
+            :selection-anchor="selectionAnchor"
+            @delete="deleteItem"
+            @update-priority="updatePriority"
+            @contextmenu="handleItemContextMenu($event, item)"
+            @toggle-select="toggleSelect"
+            @enter-select-mode="enterSelectModeFromCard"
+            @move-to-category="moveToCategory"
+            @batch-move-to-category="batchMoveToCategory"
+            @batch-lock="batchLock"
+            @batch-delete="deleteSelected"
+            @move-to-top="moveItemToTop"
+          />
+        </div>
+      </div>
+    </div>
 
     <!-- 右键菜单 -->
     <NDropdown
@@ -433,9 +612,26 @@ html.dark .clipboard-list:hover::-webkit-scrollbar-thumb {
   overflow: visible;
 }
 
+/* 直接渲染容器 */
+.direct-container {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 虚拟滚动容器 */
+.virtual-container {
+  position: relative;
+  width: 100%;
+}
+
+.virtual-content {
+  display: flex;
+  flex-direction: column;
+}
+
 .item-wrapper {
   width: 100%;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   user-select: none;
 }
 
