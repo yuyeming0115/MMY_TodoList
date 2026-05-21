@@ -568,16 +568,47 @@ pub(crate) fn show_window_at_cursor(app: &tauri::AppHandle) {
         #[cfg(target_os = "windows")]
         {
             use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+            use windows::Win32::Graphics::Gdi::{
+                GetMonitorInfoW, MonitorFromPoint, MONITOR_DEFAULTTONEAREST,
+                MONITORINFOEXW, MONITORINFO,
+            };
             use windows::Win32::Foundation::POINT;
 
             unsafe {
                 let mut point = POINT { x: 0, y: 0 };
                 if GetCursorPos(&mut point).is_ok() {
+                    // 获取鼠标所在显示器的工作区域（排除任务栏）
+                    let monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+                    let mut monitor_info = MONITORINFOEXW {
+                        monitorInfo: MONITORINFO {
+                            cbSize: std::mem::size_of::<MONITORINFOEXW>() as u32,
+                            ..Default::default()
+                        },
+                        szDevice: [0; 32],
+                    };
+
+                    let work_area = if GetMonitorInfoW(monitor, &mut monitor_info.monitorInfo).as_bool() {
+                        monitor_info.monitorInfo.rcWork
+                    } else {
+                        // 如果获取失败，使用默认屏幕尺寸（保守估计）
+                        windows::Win32::Foundation::RECT { left: 0, top: 0, right: 1920, bottom: 1080 }
+                    };
+
                     // 获取窗口大小
                     if let Ok(size) = win.outer_size() {
                         // 计算窗口位置（窗口中心在鼠标位置）
                         let x = point.x.saturating_sub(size.width as i32 / 2);
                         let y = point.y.saturating_sub(size.height as i32 / 2);
+
+                        // 边界检测：确保窗口不超出显示器工作区域
+                        // 右边界
+                        let x = x.min(work_area.right - size.width as i32);
+                        // 左边界
+                        let x = x.max(work_area.left);
+                        // 下边界
+                        let y = y.min(work_area.bottom - size.height as i32);
+                        // 上边界（关键：防止窗口顶部被遮挡）
+                        let y = y.max(work_area.top);
 
                         // 设置窗口位置
                         win.set_position(Position::Physical(PhysicalPosition { x, y })).ok();
