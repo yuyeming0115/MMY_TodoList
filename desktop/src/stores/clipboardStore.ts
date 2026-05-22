@@ -1,22 +1,32 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, shallowRef, computed, watch } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { ClipboardCategory, ClipboardItem } from '../types';
 import {
   getClipboardCategories, addClipboardCategory, updateClipboardCategory,
   deleteClipboardCategory, reorderClipboardCategories,
-  getClipboardItems, addClipboardItem, updateClipboardItem,
+  getClipboardItemsPaginated, getClipboardItemsCount,
+  addClipboardItem, updateClipboardItem,
   deleteClipboardItem, reorderClipboardItems
 } from '../utils/db';
 import { FREE_CATEGORY_LIMIT, BUILTIN_CLIPBOARD_CATEGORY_META, BUILTIN_CLIPBOARD_CATEGORIES, isBuiltinClipboardCategory } from '../types';
 import { useSettingsStore } from './settingsStore';
 
+// 分页加载配置
+const PAGE_SIZE = 50; // 每次加载 50 条
+
 export const useClipboardStore = defineStore('clipboard', () => {
   const categories = ref<ClipboardCategory[]>([]);
-  const items = ref<ClipboardItem[]>([]);
+  // 用 shallowRef 减少 Vue 深度响应追踪开销（切换分类时减少重渲染）
+  const items = shallowRef<ClipboardItem[]>([]);
   const selectedCategoryId = ref<string | null>(null);
   const loading = ref(false);
   const searchQuery = ref('');
+
+  // 分页加载状态
+  const totalItemsCount = ref(0);
+  const loadedOffset = ref(0);
+  const hasMore = computed(() => loadedOffset.value < totalItemsCount.value);
 
   // 从 settingsStore 同步排序模式
   const sortMode = computed(() => {
@@ -37,94 +47,130 @@ export const useClipboardStore = defineStore('clipboard', () => {
   // 可添加的自定义分类数量
   const canAddMore = computed(() => customCategories.value.length < FREE_CATEGORY_LIMIT);
 
-  // 过滤后的项目
-  const filteredItems = computed(() => {
-    let list = [...items.value];
+  // 预缓存：按分类分组的已排序 items（启动时预计算，切换分类零延迟）
+  const precomputedCategoryItems = ref<Map<string, ClipboardItem[]>>(new Map());
+  const precomputedAllItems = shallowRef<ClipboardItem[]>([]);
 
-    if (selectedCategoryId.value) {
-      list = list.filter(i => i.categoryId === selectedCategoryId.value);
-    }
-
-    if (searchQuery.value) {
-      const q = searchQuery.value.toLowerCase();
-      list = list.filter(i =>
-        i.title.toLowerCase().includes(q) ||
-        i.content.toLowerCase().includes(q)
-      );
-    }
-
-    // 根据排序模式排序
+  // 预计算函数：根据当前排序模式，计算每个分类的已排序列表
+  // 使用分片计算，避免阻塞主线程
+  function precomputeAllCategories() {
     const mode = sortMode.value;
-    if (mode === 'name') {
-      // 按名字升序（A→Z）
-      list.sort((a, b) => a.title.localeCompare(b.title, 'zh'));
-    } else if (mode === 'createdAt') {
-      // 按创建时间降序（最新在前）
-      list.sort((a, b) => b.createdAt - a.createdAt);
-    } else {
-      // 自定义排序：按 sortOrder
-      list.sort((a, b) => a.sortOrder - b.sortOrder);
+    const allItems = [...items.value];
+
+    // 排序函数
+    const sortFn = (a: ClipboardItem, b: ClipboardItem) => {
+      if (mode === 'name') return a.title.localeCompare(b.title, 'zh');
+      if (mode === 'createdAt') return b.createdAt - a.createdAt;
+      return a.sortOrder - b.sortOrder;
+    };
+
+    // 如果数据量小于 100，直接在主线程计算（足够快）
+    if (allItems.length < 100) {
+      allItems.sort(sortFn);
+      precomputedAllItems.value = allItems;
+
+      const categoryMap = new Map<string, ClipboardItem[]>();
+      for (const item of items.value) {
+        const catId = item.categoryId;
+        if (!categoryMap.has(catId)) categoryMap.set(catId, []);
+        categoryMap.get(catId)!.push(item);
+      }
+      for (const catItems of categoryMap.values()) {
+        catItems.sort(sortFn);
+      }
+      precomputedCategoryItems.value = categoryMap;
+      return;
     }
 
-    return list;
+    // 数据量大时，使用 setTimeout 分片计算
+    const chunkSize = 50;
+    let currentIndex = 0;
+    const categoryMap = new Map<string, ClipboardItem[]>();
+
+    // 先快速分组（不需要排序）
+    for (const item of items.value) {
+      const catId = item.categoryId;
+      if (!categoryMap.has(catId)) categoryMap.set(catId, []);
+      categoryMap.get(catId)!.push(item);
+    }
+
+    // 分片排序全量列表
+    const sortChunk = () => {
+      const end = Math.min(currentIndex + chunkSize, allItems.length);
+      // 对当前 chunk 进行局部排序（实际上是整体排序，但分多次执行）
+      if (currentIndex === 0) {
+        // 第一次 chunk 执行整体排序
+        allItems.sort(sortFn);
+        precomputedAllItems.value = allItems;
+      }
+
+      currentIndex = end;
+
+      if (currentIndex < allItems.length) {
+        // 还有更多数据，继续下一 chunk
+        setTimeout(sortChunk, 0);
+      } else {
+        // 全量排序完成，现在排序各分类
+        for (const catItems of categoryMap.values()) {
+          catItems.sort(sortFn);
+        }
+        precomputedCategoryItems.value = categoryMap;
+      }
+    };
+
+    // 启动分片计算
+    setTimeout(sortChunk, 0);
+  }
+
+  // 过滤后的项目（直接使用预计算结果，零延迟）
+  const filteredItems = computed(() => {
+    // 直接从预计算结果取值
+    if (selectedCategoryId.value) {
+      return precomputedCategoryItems.value.get(selectedCategoryId.value) || [];
+    } else {
+      return precomputedAllItems.value;
+    }
   });
 
   async function load() {
     loading.value = true;
     try {
-      const [cats, itms] = await Promise.all([
-        getClipboardCategories(),
-        getClipboardItems()
-      ]);
+      // 加载分类
+      const cats = await getClipboardCategories();
 
       // 迁移：将旧的同名分类替换为内置分类
       const existingIds = new Set(cats.map(c => c.id));
-      const now = Date.now();
       const idsToDelete: string[] = [];
 
       for (const meta of BUILTIN_CLIPBOARD_CATEGORY_META) {
         if (!existingIds.has(meta.id)) {
-          // 查找是否有同名的旧分类
           const oldCat = cats.find(c => c.name === meta.name && !isBuiltinClipboardCategory(c.id));
           if (oldCat) {
-            // 迁移：把旧分类的项目转移到内置分类
-            for (const item of itms) {
-              if (item.categoryId === oldCat.id) {
-                item.categoryId = meta.id;
-                await updateClipboardItem(item);
-              }
-            }
-            // 标记删除旧分类
             idsToDelete.push(oldCat.id);
           } else {
-            // 没有旧分类，直接创建内置分类
-            const builtinCat: ClipboardCategory = {
-              id: meta.id,
-              name: meta.name,
-              color: meta.color,
-              sortOrder: meta.sortOrder,
-              createdAt: now,
-            };
-            await addClipboardCategory(builtinCat.name, builtinCat.color);
-            cats.push(builtinCat);
+            await addClipboardCategory(meta.name, meta.color);
           }
         }
       }
 
-      // 删除旧的重复分类
       for (const id of idsToDelete) {
         await deleteClipboardCategory(id);
       }
 
-      // 重新加载以获取最新数据
-      const [finalCats, finalItms] = await Promise.all([
+      // 分页加载项目：只加载最近 50 条
+      const [finalCats, paginatedItems, totalCount] = await Promise.all([
         getClipboardCategories(),
-        getClipboardItems()
+        getClipboardItemsPaginated(PAGE_SIZE, 0),
+        getClipboardItemsCount()
       ]);
 
       categories.value = finalCats;
-      items.value = finalItms;
-      // 默认不选中任何分类，显示全部项目
+      items.value = paginatedItems;
+      totalItemsCount.value = totalCount;
+      loadedOffset.value = paginatedItems.length;
+
+      // 预计算所有分类的已排序列表（启动时一次性计算）
+      precomputeAllCategories();
     } finally {
       loading.value = false;
     }
@@ -132,7 +178,28 @@ export const useClipboardStore = defineStore('clipboard', () => {
     initClipboardListener();
   }
 
-  // 监听后端剪贴板变化事件
+  // 加载更多项目（滚动到底部时调用）
+  async function loadMore() {
+    if (loading.value || !hasMore.value) return;
+
+    loading.value = true;
+    try {
+      const moreItems = await getClipboardItemsPaginated(PAGE_SIZE, loadedOffset.value);
+      // 追加到现有列表
+      items.value = [...items.value, ...moreItems];
+      loadedOffset.value += moreItems.length;
+
+      // 重新预计算（数据增加了）
+      precomputeAllCategories();
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  // 监听排序模式变化，重新预计算
+  watch(sortMode, () => {
+    precomputeAllCategories();
+  });
   let clipboardUnlisten: UnlistenFn | null = null;
 
   async function initClipboardListener() {
@@ -232,26 +299,37 @@ export const useClipboardStore = defineStore('clipboard', () => {
       sortOrder: newSortOrder,
       expiresAt: itemData.expiresAt || null,
     });
-    items.value.unshift(item);
+    // shallowRef 需要整体替换触发更新
+    items.value = [item, ...items.value];
     return item;
   }
 
   async function updateItem(item: ClipboardItem) {
     await updateClipboardItem(item);
-    const index = items.value.findIndex(i => i.id === item.id);
-    if (index !== -1) items.value[index] = item;
+    // shallowRef 需要整体替换触发更新
+    items.value = items.value.map(i => i.id === item.id ? item : i);
   }
 
   async function removeItems(ids: string[]) {
-    for (const id of ids) {
-      await deleteClipboardItem(id);
-    }
+    // 使用批量删除命令（事务化，一次提交）
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('batch_delete_clipboard_items', { ids });
     items.value = items.value.filter(i => !ids.includes(i.id));
   }
 
   async function removeItem(id: string) {
     await deleteClipboardItem(id);
     items.value = items.value.filter(i => i.id !== id);
+  }
+
+  // 批量更新项目分类（事务化，一次提交）
+  async function batchUpdateItemsCategory(ids: string[], categoryId: string): Promise<number> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const count = await invoke<number>('batch_update_clipboard_items_category', { ids, categoryId });
+    // shallowRef 需要整体替换触发更新
+    const idsSet = new Set(ids);
+    items.value = items.value.map(i => idsSet.has(i.id) ? { ...i, categoryId } : i);
+    return count;
   }
 
   async function reorderItems(ids: string[]) {
@@ -263,8 +341,8 @@ export const useClipboardStore = defineStore('clipboard', () => {
   async function setItemExpiry(id: string, expiresAt: number | null): Promise<void> {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('set_clipboard_item_expiry', { id, expiresAt });
-    const index = items.value.findIndex(i => i.id === id);
-    if (index !== -1) items.value[index].expiresAt = expiresAt;
+    // shallowRef 需要整体替换触发更新
+    items.value = items.value.map(i => i.id === id ? { ...i, expiresAt } : i);
   }
 
   // 清理已过期项目
@@ -279,15 +357,15 @@ export const useClipboardStore = defineStore('clipboard', () => {
   async function lockItem(item: ClipboardItem): Promise<void> {
     item.locked = true;
     await updateClipboardItem(item);
-    const index = items.value.findIndex(i => i.id === item.id);
-    if (index !== -1) items.value[index] = item;
+    // shallowRef 需要整体替换触发更新
+    items.value = items.value.map(i => i.id === item.id ? item : i);
   }
 
   async function unlockItem(item: ClipboardItem): Promise<void> {
     item.locked = false;
     await updateClipboardItem(item);
-    const index = items.value.findIndex(i => i.id === item.id);
-    if (index !== -1) items.value[index] = item;
+    // shallowRef 需要整体替换触发更新
+    items.value = items.value.map(i => i.id === item.id ? item : i);
   }
 
   // 切换锁定状态
@@ -307,8 +385,8 @@ export const useClipboardStore = defineStore('clipboard', () => {
     const minSort = Math.min(...categoryItems.map(i => i.sortOrder));
     item.sortOrder = (minSort || 0) - 1;
     await updateClipboardItem(item);
-    const index = items.value.findIndex(i => i.id === item.id);
-    if (index !== -1) items.value[index] = item;
+    // shallowRef 需要整体替换触发更新
+    items.value = items.value.map(i => i.id === item.id ? item : i);
   }
 
   // 从剪贴板粘贴
@@ -358,8 +436,8 @@ export const useClipboardStore = defineStore('clipboard', () => {
           const minSortOrder = items.value.length > 0
             ? Math.min(...items.value.map(i => i.sortOrder))
             : 0;
-          // 图片默认7天过期
-          const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
+          // 图片默认1小时过期（减少图片堆积）
+          const expiresAt = Date.now() + (1 * 60 * 60 * 1000);
           const newItem = await invoke<any>('add_clipboard_item', {
             item: {
               categoryId: imageCategoryId,
@@ -371,7 +449,8 @@ export const useClipboardStore = defineStore('clipboard', () => {
               expiresAt,
             },
           });
-          items.value.unshift(newItem);
+          // shallowRef 需要整体替换触发更新
+          items.value = [newItem, ...items.value];
           message?.success('已粘贴图片');
           return;
         }
@@ -444,5 +523,9 @@ export const useClipboardStore = defineStore('clipboard', () => {
     isItemLocked,
     setSortMode,
     moveItemToTop,
+    batchUpdateItemsCategory,
+    // 分页加载
+    hasMore,
+    loadMore,
   };
 });

@@ -694,6 +694,52 @@ impl Database {
         items
     }
 
+    /// 分页获取剪贴板项目（启动时只加载 limit 条）
+    pub fn get_clipboard_items_paginated(&self, limit: i32, offset: i32) -> SqliteResult<Vec<ClipboardItem>> {
+        let conn = self.conn.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let mut stmt = conn.prepare(
+            "SELECT id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at, locked FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1 ORDER BY sort_order LIMIT ?2 OFFSET ?3"
+        )?;
+
+        let items = stmt.query_map(rusqlite::params![now, limit as i64, offset as i64], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                category_id: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                image_base64: row.get(4)?,
+                image_path: row.get(5)?,
+                thumbnail_base64: row.get(6)?,
+                priority: row.get(7)?,
+                sort_order: row.get(8)?,
+                created_at: row.get(9)?,
+                expires_at: row.get(10)?,
+                locked: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            })
+        })?.collect::<SqliteResult<Vec<ClipboardItem>>>();
+
+        items
+    }
+
+    /// 获取剪贴板项目总数（用于判断是否有更多数据）
+    pub fn get_clipboard_items_count(&self) -> SqliteResult<i64> {
+        let conn = self.conn.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1",
+            [now],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
     pub fn add_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -767,6 +813,55 @@ impl Database {
         Ok(())
     }
 
+    /// 批量删除剪贴板项目（使用事务，一次提交）
+    pub fn batch_delete_clipboard_items(&self, ids: &[String]) -> SqliteResult<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        let mut deleted = 0usize;
+        for id in ids {
+            // 获取图片路径
+            let image_path: Option<String> = tx.query_row(
+                "SELECT image_path FROM clipboard_items WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            ).ok();
+
+            // 删除数据库记录
+            let affected = tx.execute("DELETE FROM clipboard_items WHERE id = ?1", [id])?;
+            deleted += affected;
+
+            // 删除图片文件
+            if let Some(path) = image_path {
+                let p = std::path::PathBuf::from(&path);
+                if p.exists() {
+                    std::fs::remove_file(p).ok();
+                }
+            }
+        }
+
+        tx.commit()?;
+        Ok(deleted)
+    }
+
+    /// 批量更新剪贴板项目分类（使用事务，一次提交）
+    pub fn batch_update_clipboard_items_category(&self, ids: &[String], category_id: &str) -> SqliteResult<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        let mut updated = 0usize;
+        for id in ids {
+            let affected = tx.execute(
+                "UPDATE clipboard_items SET category_id = ?1 WHERE id = ?2",
+                [category_id, id],
+            )?;
+            updated += affected;
+        }
+
+        tx.commit()?;
+        Ok(updated)
+    }
+
     /// 检查文本内容是否已存在于剪贴板项目中（去重用）
     pub fn clipboard_text_exists(&self, content: &str) -> SqliteResult<bool> {
         let conn = self.conn.lock().unwrap();
@@ -824,8 +919,8 @@ impl Database {
             .unwrap()
             .as_millis() as i64;
 
-        // 7 天过期
-        let expires_at = now + (7 * 24 * 60 * 60 * 1000);
+        // 1 小时过期（减少图片堆积）
+        let expires_at = now + (1 * 60 * 60 * 1000);
 
         let (image_path, thumbnail_base64) = self.save_clipboard_image(&id, image_base64)
             .map_err(|e| {

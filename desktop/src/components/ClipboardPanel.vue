@@ -30,8 +30,8 @@ const stackStyle = computed(() => {
 const isDragging = ref(false);
 const dragList = ref<ClipboardItem[]>([]);
 
-// 虚拟滚动阈值：低于此数量直接渲染全部
-const VIRTUAL_SCROLL_THRESHOLD = 100;
+// 虚拟滚动阈值：低于此数量直接渲染全部（从 100 降到 20）
+const VIRTUAL_SCROLL_THRESHOLD = 20;
 
 // 虚拟滚动参数 - 动态高度估算
 const TEXT_ITEM_HEIGHT = 60; // 文字卡片估算高度（约50px卡片 + 12px margin）
@@ -113,16 +113,38 @@ const offsetY = computed(() => {
 function handleScroll(e: Event) {
   const target = e.target as HTMLElement;
   scrollTop.value = target.scrollTop;
+
+  // 滚动到底部时加载更多
+  const threshold = 100; // 距底部 100px 时触发
+  const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+  if (scrollBottom < threshold && clipboardStore.hasMore && !clipboardStore.loading) {
+    clipboardStore.loadMore();
+  }
 }
 
-// 监听容器高度变化
+// ResizeObserver 防抖
+let resizeObserverTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// 监听容器高度变化（带防抖，避免切换模式时频繁触发）
 onMounted(() => {
+  // 预热 computed：提前访问，让缓存生成（避免第一次操作卡顿）
+  setTimeout(() => {
+    void filteredItems.value.length;
+    void filteredItemIds.value.length;
+  }, 50);
+
   if (listRef.value) {
     containerHeight.value = listRef.value.clientHeight;
     const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        containerHeight.value = entry.contentRect.height;
+      // 防抖：延迟更新，避免频繁触发 computed 重新计算
+      if (resizeObserverTimeout) {
+        clearTimeout(resizeObserverTimeout);
       }
+      resizeObserverTimeout = setTimeout(() => {
+        for (const entry of entries) {
+          containerHeight.value = entry.contentRect.height;
+        }
+      }, 100);
     });
     resizeObserver.observe(listRef.value);
     // 存储 observer 以便卸载时清理
@@ -144,22 +166,28 @@ const selectionAnchor = ref<string | null>(null); // Shift 连选的锚点
 // 切换单个选中（允许选中收藏卡用于移动操作）
 function toggleSelect(id: string, isShift: boolean) {
   if (isShift && selectionAnchor.value) {
-    // Shift 连选：选中锚点到当前之间的所有项目
-    const ids = filteredItems.value.map(i => i.id);
+    // Shift 连选：使用预缓存的 ID 数组，批量一次性替换
+    const ids = filteredItemIds.value;
     const anchorIdx = ids.indexOf(selectionAnchor.value);
     const currIdx = ids.indexOf(id);
     if (anchorIdx >= 0 && currIdx >= 0) {
       const start = Math.min(anchorIdx, currIdx);
       const end = Math.max(anchorIdx, currIdx);
+      const newSet = new Set(selectedIds.value);
       for (let i = start; i <= end; i++) {
-        selectedIds.value.add(ids[i]);
+        newSet.add(ids[i]);
       }
+      selectedIds.value = newSet;
     }
   } else {
     if (selectedIds.value.has(id)) {
-      selectedIds.value.delete(id);
+      const newSet = new Set(selectedIds.value);
+      newSet.delete(id);
+      selectedIds.value = newSet;
     } else {
-      selectedIds.value.add(id);
+      const newSet = new Set(selectedIds.value);
+      newSet.add(id);
+      selectedIds.value = newSet;
       selectionAnchor.value = id;
     }
   }
@@ -212,20 +240,13 @@ function moveItemToTop(item: ClipboardItem) {
   clipboardStore.moveItemToTop(item);
 }
 
-// 批量移动分类
+// 批量移动分类（使用事务化批量操作）
 async function batchMoveToCategory(categoryId: string) {
   const ids = [...selectedIds.value];
   if (ids.length === 0) return;
 
-  let movedCount = 0;
-  for (const id of ids) {
-    const item = clipboardStore.items.find(i => i.id === id);
-    if (item) {
-      item.categoryId = categoryId;
-      await clipboardStore.updateItem(item);
-      movedCount++;
-    }
-  }
+  // 使用 store 的批量更新方法（一次提交，一次重渲染）
+  const movedCount = await clipboardStore.batchUpdateItemsCategory(ids, categoryId);
 
   if (movedCount > 0) {
     message.success(t('messages.movedSelected', { count: movedCount }));
@@ -237,8 +258,7 @@ async function batchMoveToCategory(categoryId: string) {
 
 // 全选
 function selectAll() {
-  const allIds = filteredItems.value.map(i => i.id);
-  selectedIds.value = new Set(allIds);
+  selectedIds.value = new Set(filteredItemIds.value);
   if (!selectMode.value) selectMode.value = true;
 }
 
@@ -294,25 +314,11 @@ async function batchLock() {
   selectionAnchor.value = null;
 }
 
-// 过滤后的项目（精简模式和正常模式都使用 store 的过滤）
-const filteredItems = computed(() => {
-  // 精简模式和正常模式都使用 store 的 filteredItems（包含分类和搜索）
-  let items = clipboardStore.filteredItems;
+// 过滤后的项目（直接使用 store 的 filteredItems，已在 store 中排序）
+const filteredItems = computed(() => clipboardStore.filteredItems);
 
-  // 精简模式下根据排序模式排序（正常模式已排序）
-  if (props.compact) {
-    const mode = clipboardStore.sortMode;
-    if (mode === 'name') {
-      items = [...items].sort((a, b) => a.title.localeCompare(b.title, 'zh'));
-    } else if (mode === 'createdAt') {
-      items = [...items].sort((a, b) => b.createdAt - a.createdAt);
-    } else {
-      items = [...items].sort((a, b) => a.sortOrder - b.sortOrder);
-    }
-  }
-
-  return items;
-});
+// 预缓存 ID 数组（避免每次 Shift 加选都执行 map）
+const filteredItemIds = computed(() => filteredItems.value.map(i => i.id));
 
 // 拖拽是否启用（仅在自定义排序模式下）
 const dragEnabled = computed(() => clipboardStore.sortMode === 'custom');
@@ -320,6 +326,13 @@ const dragEnabled = computed(() => clipboardStore.sortMode === 'custom');
 // 同步到拖拽列表
 watch(filteredItems, (val) => {
   dragList.value = [...val];
+}, { immediate: true });
+
+// 监听分类变化，立即预热新的 filteredItems（消除切换分类的首次卡顿）
+watch(() => clipboardStore.selectedCategoryId, () => {
+  // 立即触发 computed 计算，不等用户操作
+  void filteredItems.value;
+  void filteredItemIds.value;
 }, { immediate: true });
 
 // 拖拽事件
@@ -446,6 +459,7 @@ function cancelEdit() {
             :show-checkbox="selectMode || selectedIds.size > 0"
             :selected="selectedIds.has(element.id)"
             :selection-anchor="selectionAnchor"
+            :is-visible="true"
             @delete="deleteItem"
             @update-priority="updatePriority"
             @contextmenu="handleItemContextMenu($event, element)"
@@ -475,6 +489,7 @@ function cancelEdit() {
           :show-checkbox="selectMode || selectedIds.size > 0"
           :selected="selectedIds.has(item.id)"
           :selection-anchor="selectionAnchor"
+          :is-visible="true"
           @delete="deleteItem"
           @update-priority="updatePriority"
           @contextmenu="handleItemContextMenu($event, item)"

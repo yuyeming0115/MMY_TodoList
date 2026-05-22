@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NIcon, NDropdown, NInput, useMessage } from 'naive-ui';
-import { h, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { h, ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import {
   TrashOutline as DeleteIcon, CopyOutline as CopyIcon,
   CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
@@ -19,6 +19,7 @@ const props = defineProps<{
   showCheckbox?: boolean;
   selected?: boolean;
   selectionAnchor?: string | null;
+  isVisible?: boolean; // 新增：是否在可视区域
 }>();
 
 const emit = defineEmits<{
@@ -42,6 +43,17 @@ const contextMenuX = ref(0);
 const contextMenuY = ref(0);
 const isCrossDragging = ref(false);
 const dragHandleRef = ref<HTMLElement | null>(null);
+
+// 图片懒加载：只有可视时才解码
+const shouldLoadImage = ref(false);
+const imageSrc = ref<string>('');
+
+watch(() => props.isVisible, (visible) => {
+  if (visible && (props.item.imagePath || props.item.imageBase64) && !shouldLoadImage.value) {
+    shouldLoadImage.value = true;
+    imageSrc.value = props.item.thumbnailBase64 || props.item.imageBase64 || '';
+  }
+}, { immediate: true });
 
 // 用原生 mousedown 拦截 Sortable.js 的事件捕获，让它无法调用 preventDefault() 阻断原生拖拽
 function blockSortableMousedown(e: Event) {
@@ -136,20 +148,34 @@ const contextMenuOptions = computed(() => {
     options.push({ label: t('contextMenu.openFolder'), key: 'openFolder', icon: () => h(NIcon, { component: FolderOpenIcon, size: 16 }) });
   }
 
-  // 内置分类（文本/图像）显示设置过期时间
+  // 内置分类（文本/图像）显示设置过期时间 - 图片只保留1小时选项
   if (isBuiltinCategory.value) {
-    options.push({
-      key: 'expiry',
-      label: t('contextMenu.setExpiry'),
-      icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
-      children: [
-        { label: t('expiry.hour1'), key: 'expiry_1h' },
-        { label: t('expiry.day1'), key: 'expiry_1d' },
-        { label: t('expiry.days7'), key: 'expiry_7d' },
-        { label: t('expiry.days30'), key: 'expiry_30d' },
-        { label: t('expiry.never'), key: 'expiry_never' },
-      ],
-    });
+    // 如果是图片类型，只显示1小时过期
+    if (props.item.imagePath || props.item.imageBase64) {
+      options.push({
+        key: 'expiry',
+        label: t('contextMenu.setExpiry'),
+        icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
+        children: [
+          { label: t('expiry.hour1'), key: 'expiry_1h' },
+          { label: t('expiry.never'), key: 'expiry_never' },
+        ],
+      });
+    } else {
+      // 文本类型保留所有选项
+      options.push({
+        key: 'expiry',
+        label: t('contextMenu.setExpiry'),
+        icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
+        children: [
+          { label: t('expiry.hour1'), key: 'expiry_1h' },
+          { label: t('expiry.day1'), key: 'expiry_1d' },
+          { label: t('expiry.days7'), key: 'expiry_7d' },
+          { label: t('expiry.days30'), key: 'expiry_30d' },
+          { label: t('expiry.never'), key: 'expiry_never' },
+        ],
+      });
+    }
   }
 
   // 移动到分类（直接显示分类列表）
@@ -418,7 +444,9 @@ async function handleCrossAppDragEnd(e: DragEvent) {
       <input type="checkbox" :checked="props.selected" />
       <span class="checkmark"></span>
     </label>
+    <!-- 跨应用拖拽手柄 - 精简模式下不渲染 -->
     <div
+      v-if="!props.compact"
       class="cross-app-drag-handle"
       draggable="true"
       ref="dragHandleRef"
@@ -430,10 +458,11 @@ async function handleCrossAppDragEnd(e: DragEvent) {
       <NIcon :component="DragIcon" size="18" />
     </div>
     <div class="task-content">
-      <!-- 纯图片：显示缩略图（优先用 thumbnailBase64，回退到 imageBase64） -->
+      <!-- 纯图片：显示缩略图（懒加载，只有可视时才解码） -->
       <div v-if="item.imagePath || item.imageBase64" class="image-only">
         <div class="task-thumbnail" :class="{ 'compact-thumb': props.compact }">
-          <img :src="item.thumbnailBase64 || item.imageBase64" alt="剪贴板图片" />
+          <img v-if="shouldLoadImage" :src="imageSrc" alt="剪贴板图片" />
+          <div v-else class="image-placeholder"></div>
         </div>
       </div>
 
@@ -469,11 +498,11 @@ async function handleCrossAppDragEnd(e: DragEvent) {
       </div>
     </div>
 
-    <!-- 锁定角标 -->
-    <div v-if="isLocked" class="locked-badge">🔒</div>
+    <!-- 锁定角标 - 精简模式下不渲染 -->
+    <div v-if="isLocked && !props.compact" class="locked-badge">🔒</div>
 
-    <!-- 过期时间提示 -->
-    <div v-if="expiryLabel" class="expiry-badge" :class="{ warning: isExpiringSoon }">
+    <!-- 过期时间提示 - 精简模式下不渲染 -->
+    <div v-if="expiryLabel && !props.compact" class="expiry-badge" :class="{ warning: isExpiringSoon }">
       <NIcon :component="TimeIcon" size="10" />
       {{ expiryLabel }}
     </div>
@@ -648,6 +677,26 @@ html.dark .task-card:hover .task-desc {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* 图片懒加载占位符 */
+.image-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  background: linear-gradient(135deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 200%;
+  animation: placeholder-shimmer 1.5s infinite;
+}
+
+html.dark .image-placeholder {
+  background: linear-gradient(135deg, #333 25%, #444 50%, #333 75%);
+  background-size: 200% 200%;
+}
+
+@keyframes placeholder-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* 编辑模式 */

@@ -203,6 +203,18 @@ pub fn get_clipboard_items(db: State<'_, Arc<Database>>) -> Result<Vec<Clipboard
     db.get_clipboard_items().map_err(|e| e.to_string())
 }
 
+/// 分页获取剪贴板项目（启动时只加载 limit 条）
+#[tauri::command]
+pub fn get_clipboard_items_paginated(db: State<'_, Arc<Database>>, limit: i32, offset: i32) -> Result<Vec<ClipboardItem>, String> {
+    db.get_clipboard_items_paginated(limit, offset).map_err(|e| e.to_string())
+}
+
+/// 获取剪贴板项目总数
+#[tauri::command]
+pub fn get_clipboard_items_count(db: State<'_, Arc<Database>>) -> Result<i64, String> {
+    db.get_clipboard_items_count().map_err(|e| e.to_string())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewClipboardItem {
@@ -251,6 +263,18 @@ pub fn delete_clipboard_item(db: State<'_, Arc<Database>>, id: String) -> Result
 #[tauri::command]
 pub fn reorder_clipboard_items(db: State<'_, Arc<Database>>, ids: Vec<String>) -> Result<(), String> {
     db.reorder_clipboard_items(&ids).map_err(|e| e.to_string())
+}
+
+/// 批量删除剪贴板项目（使用事务，一次提交）
+#[tauri::command]
+pub fn batch_delete_clipboard_items(db: State<'_, Arc<Database>>, ids: Vec<String>) -> Result<usize, String> {
+    db.batch_delete_clipboard_items(&ids).map_err(|e| e.to_string())
+}
+
+/// 批量更新剪贴板项目分类（使用事务，一次提交）
+#[tauri::command]
+pub fn batch_update_clipboard_items_category(db: State<'_, Arc<Database>>, ids: Vec<String>, category_id: String) -> Result<usize, String> {
+    db.batch_update_clipboard_items_category(&ids, &category_id).map_err(|e| e.to_string())
 }
 
 /// 读取剪贴板图片文件（返回 base64 data URL）
