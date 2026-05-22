@@ -59,12 +59,20 @@ async function toggleMaximize() {
       // 还原到之前的尺寸
       if (previousSize.value) {
         await appWindow.setSize(new LogicalSize(previousSize.value.width, previousSize.value.height));
+      } else {
+        // 如果没有保存的尺寸，使用数据库中的尺寸或默认尺寸
+        const { windowWidth, windowHeight } = settingsStore.settings;
+        const width = windowWidth || 680;
+        const height = windowHeight || 600;
+        await appWindow.setSize(new LogicalSize(width, height));
       }
       isMaximized.value = false;
     } else {
       // 保存当前尺寸
       const size = await appWindow.innerSize();
       previousSize.value = { width: size.width, height: size.height };
+      // 同时保存到 settings（用于下次启动还原）
+      settingsStore.setWindowSize(size.width, size.height);
       // 最大化
       await appWindow.maximize();
       isMaximized.value = true;
@@ -214,10 +222,11 @@ async function toggleCompactMode() {
     isCompactMode.value = !isCompactMode.value;
 
     if (isCompactMode.value) {
-      // 进入精简模式：缩小窗口
+      // 进入精简模式：缩小宽度，高度继承当前高度
       const size = await appWindow.innerSize();
       preCompactSize.value = { width: size.width, height: size.height };
-      await appWindow.setSize(new LogicalSize(COMPACT_WIDTH, 400));
+      // 精简模式：宽度固定 400，高度继承之前的高度
+      await appWindow.setSize(new LogicalSize(COMPACT_WIDTH, size.height));
     } else {
       // 退出精简模式：恢复之前尺寸
       if (preCompactSize.value) {
@@ -312,11 +321,17 @@ onMounted(async () => {
     clipboardStore.load(),
   ]);
 
-  // 窗口宽度迁移：旧用户窗口太窄时重置
-  const { windowWidth } = settingsStore.settings;
-  if (windowWidth && windowWidth < 450) {
-    settingsStore.setWindowSize(680, settingsStore.settings.windowHeight || 600);
-    await appWindow.setSize(new LogicalSize(680, settingsStore.settings.windowHeight || 600));
+  // 窗口尺寸迁移：旧用户窗口太窄/太矮时重置
+  const { windowWidth, windowHeight } = settingsStore.settings;
+  const minWidth = 400;
+  const minHeight = 600;
+  if (windowWidth && windowWidth < minWidth) {
+    settingsStore.setWindowSize(minWidth, windowHeight || minHeight);
+    await appWindow.setSize(new LogicalSize(minWidth, windowHeight || minHeight));
+  }
+  if (windowHeight && windowHeight < minHeight) {
+    settingsStore.setWindowSize(windowWidth || minWidth, minHeight);
+    await appWindow.setSize(new LogicalSize(windowWidth || minWidth, minHeight));
   }
 
   // 应用保存的窗口尺寸和位置
@@ -360,8 +375,12 @@ async function handleResize() {
   }
   resizeTimeout = setTimeout(async () => {
     try {
-      const size = await appWindow.innerSize();
-      settingsStore.setWindowSize(size.width, size.height);
+      // 先检查最大化状态，最大化时不保存尺寸（避免下次启动以最大化尺寸打开普通窗口）
+      const maximized = await appWindow.isMaximized();
+      if (!maximized) {
+        const size = await appWindow.innerSize();
+        settingsStore.setWindowSize(size.width, size.height);
+      }
       // 更新最大化状态
       checkMaximized();
     } catch (_) {}
@@ -702,9 +721,17 @@ async function startTabsDrag(e: MouseEvent) {
   } catch (_) {}
 }
 
-/// 隐藏窗口到系统托盘
+/// 隐藏窗口到系统托盘（隐藏前保存窗口尺寸和位置）
 async function hideToTray() {
   try {
+    // 隐藏前保存窗口尺寸和位置（避免防抖延迟导致最后尺寸丢失）
+    const maximized = await appWindow.isMaximized();
+    if (!maximized) {
+      const size = await appWindow.innerSize();
+      const position = await appWindow.outerPosition();
+      settingsStore.setWindowSize(size.width, size.height);
+      settingsStore.setWindowPosition(position.x, position.y);
+    }
     await invoke('hide_to_tray');
   } catch (_) {}
 }
@@ -1030,6 +1057,8 @@ html, body, #app {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: transparent;
   color: #333;
+  /* 强制裁剪整个页面角落 */
+  overflow: hidden;
 }
 
 /* 深色模式 */
@@ -1052,8 +1081,9 @@ html.dark, html.dark body, html.dark #app {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  border-radius: 10px;
   background: #f5f5f5;
+  /* 使用 clip-path 强制裁剪角落，消除白色像素 */
+  clip-path: inset(0 round 10px);
 }
 
 html.dark .app-layout {
