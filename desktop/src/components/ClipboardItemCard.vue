@@ -283,8 +283,36 @@ function handleClick(e: MouseEvent) {
 
 function handleContextMenu(e: MouseEvent) {
   e.preventDefault();
-  contextMenuX.value = e.clientX;
-  contextMenuY.value = e.clientY;
+
+  // 获取窗口尺寸和预估菜单尺寸
+  const windowWidth = window.innerWidth;
+  const windowHeight = window.innerHeight;
+
+  // 预估菜单宽度（根据选项数量，通常约 200px）
+  const estimatedMenuWidth = 220;
+  // 预估菜单高度（每个选项约 36px，分隔线约 10px）
+  const estimatedMenuHeight = contextMenuOptions.value.length * 36;
+
+  // 计算调整后的位置
+  let x = e.clientX;
+  let y = e.clientY;
+
+  // 如果菜单会超出右边界，向左偏移
+  if (x + estimatedMenuWidth > windowWidth) {
+    x = windowWidth - estimatedMenuWidth - 10;
+  }
+
+  // 如果菜单会超出底部边界，向上显示
+  if (y + estimatedMenuHeight > windowHeight) {
+    y = y - estimatedMenuHeight;
+    // 如果向上也超出了顶部，则限制在顶部
+    if (y < 10) {
+      y = 10;
+    }
+  }
+
+  contextMenuX.value = x;
+  contextMenuY.value = y;
   showContextMenu.value = true;
 }
 
