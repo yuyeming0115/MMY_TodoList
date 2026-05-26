@@ -992,6 +992,66 @@ impl Database {
         Ok(())
     }
 
+    /// 自动保存大图片剪贴板内容（直接保存 PNG 文件，不转 base64）
+    /// 用于超大尺寸图片，避免内存膨胀
+    pub fn add_auto_clipboard_image_large(&self, width: &u32, height: &u32, png_data: &[u8]) -> SqliteResult<()> {
+        let id = Uuid::new_v4().to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        // 1 小时过期（减少图片堆积）
+        let expires_at = now + (1 * 60 * 60 * 1000);
+
+        // 直接保存 PNG 数据到文件（不经过 base64）
+        let app_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let img_dir = app_dir.join("clipboard_images");
+        std::fs::create_dir_all(&img_dir).map_err(|e| {
+            eprintln!("[剪贴板] 创建图片目录失败: {:?}", e);
+            rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+        })?;
+
+        let file_path = img_dir.join(format!("{}.png", id));
+        std::fs::write(&file_path, png_data).map_err(|e| {
+            eprintln!("[剪贴板] 写入图片文件失败: {:?}", e);
+            rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+        })?;
+
+        let image_path = file_path.to_str().unwrap_or("").to_string();
+
+        // 使用内置"图像"分类 ID
+        let category_id = "builtin_image";
+
+        // 标题显示尺寸信息
+        let title = format!("剪贴板图片 ({}x{})", width, height);
+
+        // 获取最小 sort_order
+        let conn = self.conn.lock().unwrap();
+        let min_order: i32 = conn.query_row(
+            "SELECT COALESCE(MIN(sort_order), 0) FROM clipboard_items",
+            [],
+            |row| row.get(0),
+        )?;
+
+        // 使用 INSERT OR IGNORE 防止竞态重复
+        let affected = conn.execute(
+            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, priority, sort_order, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5, 2, ?6, ?7, ?8)",
+            rusqlite::params![&id, category_id, &title, "", &image_path, min_order - 1, &now, expires_at],
+        ).map_err(|e| {
+            eprintln!("[剪贴板] 插入数据库失败: {:?}", e);
+            e
+        })?;
+        if affected == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        Ok(())
+    }
+
     /// 只保存图片文件，不生成缩略图（学习 Ditto：数据库只存路径）
     pub fn save_clipboard_image_file(&self, id: &str, image_base64: &str) -> SqliteResult<String> {
         // 去掉 data:image/...;base64, 前缀
