@@ -591,6 +591,7 @@ function handleToggleStatus() {
     :y="contextMenuY"
     :show="showContextMenu"
     :options="contextMenuOptions"
+    to="body"
     @select="handleMenuSelect"
     @clickoutside="showContextMenu = false"
   />

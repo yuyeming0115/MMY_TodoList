@@ -10,8 +10,10 @@ use crate::database::Database;
 
 /// 最大剪贴板文本长度（1MB）
 const MAX_TEXT_LEN: usize = 1_048_576;
-/// 最大剪贴板图片 base64 长度（10MB）
-const MAX_IMAGE_BASE64_LEN: usize = 10_485_760;
+/// 最大剪贴板图片 base64 长度（50MB）- 提高限制以支持大尺寸截图
+const MAX_IMAGE_BASE64_LEN: usize = 52_428_800;
+/// 最大图片像素数（超过此值不显示缩略图，只存路径）
+const MAX_IMAGE_PIXELS: u32 = 10_000_000; // 10M 像素（约 3160x3160）
 
 /// 延迟读取时间（毫秒）- 学习 Ditto：收到变化通知后延迟读取，避免干扰用户复制操作
 const READ_DELAY_MS: u64 = 150;
