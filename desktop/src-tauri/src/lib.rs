@@ -42,7 +42,7 @@ pub fn run() {
                 // 退出前执行备份
                 if let Some(backup_mgr) = app.try_state::<Arc<BackupManager>>() {
                     if backup_mgr.should_backup_on_close() {
-                        backup_mgr.create_backup(app);
+                        backup_mgr.create_backup_default(app);
                     }
                 }
                 app.exit(0);
@@ -115,7 +115,7 @@ pub fn run() {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         // 隐藏前执行备份（如果启用）
                         if backup_for_hide.should_backup_on_close() {
-                            backup_for_hide.create_backup(&app_handle);
+                            backup_for_hide.create_backup_default(&app_handle);
                         }
                         // 阻止关闭，改为隐藏到托盘
                         api.prevent_close();
@@ -185,6 +185,7 @@ pub fn run() {
             commands::get_backup_settings,
             commands::update_backup_settings,
             commands::create_backup_now,
+            commands::create_backup_with_type,
             commands::list_backups,
             commands::restore_backup,
             commands::delete_backup,
@@ -210,7 +211,7 @@ fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
     // 隐藏前执行备份（如果启用）
     if let Some(backup_mgr) = app.try_state::<Arc<BackupManager>>() {
         if backup_mgr.should_backup_on_close() {
-            backup_mgr.create_backup(&app);
+            backup_mgr.create_backup_default(&app);
         }
     }
     if let Some(win) = app.get_webview_window("main") {

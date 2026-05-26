@@ -103,11 +103,15 @@ export function isBuiltinClipboardCategory(id: string): boolean {
 export const FREE_CATEGORY_LIMIT = 9;
 export const FREE_TASK_PER_CATEGORY_LIMIT = 50;
 
+// 备份类型
+export type BackupType = 'quick' | 'full';
+
 // 备份设置
 export interface BackupSettings {
   backupOnClose: boolean;
   backupHourly: boolean;
   retentionDays: number;
+  defaultBackupType: BackupType; // 默认备份类型
 }
 
 // 备份信息
@@ -115,4 +119,5 @@ export interface BackupInfo {
   filename: string;
   createdAt: number;
   sizeBytes: number;
+  backupType: BackupType; // 备份类型（从文件名推断）
 }

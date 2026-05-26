@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem, BackupSettings, BackupInfo } from '../types';
+import type { Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem, BackupSettings, BackupInfo, BackupType } from '../types';
 
 // 分类操作
 export async function getCategories(): Promise<Category[]> {
@@ -144,6 +144,11 @@ export async function updateBackupSettings(settings: BackupSettings): Promise<vo
 
 export async function createBackupNow(): Promise<string> {
   return invoke('create_backup_now');
+}
+
+/// 创建指定类型的备份（quick/full）
+export async function createBackupWithType(backupType: BackupType): Promise<string> {
+  return invoke('create_backup_with_type', { backupType });
 }
 
 export async function listBackups(): Promise<BackupInfo[]> {

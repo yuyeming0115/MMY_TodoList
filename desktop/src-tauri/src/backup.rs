@@ -11,6 +11,22 @@ use std::fs;
 use std::io;
 use base64::Engine;
 
+/// 备份类型
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum BackupType {
+    /// 快速备份：仅元数据（不含图片 base64）
+    Quick,
+    /// 完整备份：包含图片 base64
+    Full,
+}
+
+impl Default for BackupType {
+    fn default() -> Self {
+        Self::Quick
+    }
+}
+
 /// 备份设置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +37,8 @@ pub struct BackupSettings {
     pub backup_hourly: bool,
     /// 保留天数（默认7天）
     pub retention_days: u32,
+    /// 默认备份类型（快速/完整）
+    pub default_backup_type: BackupType,
 }
 
 impl Default for BackupSettings {
@@ -29,6 +47,7 @@ impl Default for BackupSettings {
             backup_on_close: true,
             backup_hourly: false,
             retention_days: 7,
+            default_backup_type: BackupType::Quick,
         }
     }
 }
@@ -40,6 +59,8 @@ pub struct BackupInfo {
     pub filename: String,
     pub created_at: i64,
     pub size_bytes: u64,
+    /// 备份类型（从文件名推断）
+    pub backup_type: BackupType,
 }
 
 /// 备份管理器
@@ -110,10 +131,14 @@ impl BackupManager {
         self.settings.lock().unwrap().backup_on_close
     }
 
-    /// 创建备份
-    pub fn create_backup(&self, _app_handle: &tauri::AppHandle) -> Option<String> {
+    /// 创建备份（支持快速/完整备份类型）
+    pub fn create_backup(&self, _app_handle: &tauri::AppHandle, backup_type: BackupType) -> Option<String> {
         let now = Utc::now();
-        let filename = format!("backup_{}.mmytodo", now.format("%Y%m%d_%H%M%S"));
+        let type_suffix = match backup_type {
+            BackupType::Quick => "_quick",
+            BackupType::Full => "_full",
+        };
+        let filename = format!("backup_{}{}.mmytodo", now.format("%Y%m%d_%H%M%S"), type_suffix);
         let backup_path = self.backup_dir.join(&filename);
 
         // 导出数据
@@ -123,22 +148,33 @@ impl BackupManager {
         let mut clipboard_items = self.db.get_clipboard_items().ok()?;
         let settings = self.db.get_settings().ok()?;
 
-        // 备份图片文件：将 image_path 的图片转成 base64 存入 JSON
-        for item in &mut clipboard_items {
-            if let Some(path) = &item.image_path {
-                // 读取图片文件转成 base64
-                if let Ok(data) = fs::read(path) {
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-                    item.image_base64 = Some(format!("data:image/png;base64,{}", b64));
+        // 根据备份类型处理图片
+        match backup_type {
+            BackupType::Quick => {
+                // 快速备份：不转换图片为 base64，只保留路径引用
+                // 图片目录需要单独备份或后续恢复时从其他来源获取
+            }
+            BackupType::Full => {
+                // 完整备份：将 image_path 的图片转成 base64 存入 JSON
+                for item in &mut clipboard_items {
+                    if let Some(path) = &item.image_path {
+                        // 读取图片文件转成 base64
+                        if let Ok(data) = fs::read(path) {
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                            item.image_base64 = Some(format!("data:image/png;base64,{}", b64));
+                        }
+                    }
                 }
-                // 即使文件不存在，保留原有的 image_base64（如果有）
             }
         }
 
         let export_data = ExportData {
             version: "3.0".to_string(),
             exported_at: now.to_rfc3339(),
-            source: "backup".to_string(),
+            source: match backup_type {
+                BackupType::Quick => "backup_quick".to_string(),
+                BackupType::Full => "backup_full".to_string(),
+            },
             categories,
             tasks,
             clipboard_categories,
@@ -154,6 +190,12 @@ impl BackupManager {
         self.cleanup_old_backups();
 
         Some(filename)
+    }
+
+    /// 创建默认类型备份（使用设置中的默认备份类型）
+    pub fn create_backup_default(&self, app_handle: &tauri::AppHandle) -> Option<String> {
+        let backup_type = self.settings.lock().unwrap().default_backup_type.clone();
+        self.create_backup(app_handle, backup_type)
     }
 
     /// 清理超过保留天数的备份，并确保最多只保留7个
@@ -179,8 +221,7 @@ impl BackupManager {
                         .unwrap_or("");
 
                     if filename.starts_with("backup_") {
-                        let timestamp_str = &filename[7..filename.len() - 8];
-                        if let Some(backup_time) = Self::parse_backup_time(timestamp_str) {
+                        if let Some((backup_time, _)) = Self::parse_backup_time(filename) {
                             backups.push((path, backup_time));
                         }
                     }
@@ -212,12 +253,32 @@ impl BackupManager {
         }
     }
 
-    /// 解析备份时间戳
-    fn parse_backup_time(timestamp_str: &str) -> Option<i64> {
-        // 格式: YYYYMMDD_HHMMSS
+    /// 解析备份时间戳（支持带 _quick/_full 后缀的格式）
+    fn parse_backup_time(filename: &str) -> Option<(i64, BackupType)> {
+        // 格式: backup_YYYYMMDD_HHMMSS_quick.mmytodo 或 backup_YYYYMMDD_HHMMSS_full.mmytodo
+        // 或旧格式: backup_YYYYMMDD_HHMMSS.mmytodo
+
+        // 去掉 .mmytodo 后缀
+        let name_without_ext = filename.strip_suffix(".mmytodo")?;
+
+        // 去掉 backup_ 前缀
+        let rest = name_without_ext.strip_prefix("backup_")?;
+
+        // 检查是否有类型后缀
+        let (timestamp_str, backup_type) = if let Some(ts) = rest.strip_suffix("_quick") {
+            (ts, BackupType::Quick)
+        } else if let Some(ts) = rest.strip_suffix("_full") {
+            (ts, BackupType::Full)
+        } else {
+            // 旧格式，默认为 Full（因为包含图片）
+            (rest, BackupType::Full)
+        };
+
+        // 解析时间戳 YYYYMMDD_HHMMSS
         if timestamp_str.len() != 15 {
             return None;
         }
+
         let year: i32 = timestamp_str[0..4].parse().ok()?;
         let month: u32 = timestamp_str[4..6].parse().ok()?;
         let day: u32 = timestamp_str[6..8].parse().ok()?;
@@ -225,9 +286,11 @@ impl BackupManager {
         let min: u32 = timestamp_str[11..13].parse().ok()?;
         let sec: u32 = timestamp_str[13..15].parse().ok()?;
 
-        chrono::NaiveDate::from_ymd_opt(year, month, day)
+        let created_at = chrono::NaiveDate::from_ymd_opt(year, month, day)
             .and_then(|d| d.and_hms_opt(hour, min, sec))
-            .map(|dt| dt.and_utc().timestamp_millis())
+            .map(|dt| dt.and_utc().timestamp_millis())?;
+
+        Some((created_at, backup_type))
     }
 
     /// 列出所有备份
@@ -246,15 +309,15 @@ impl BackupManager {
                     let metadata = entry.metadata().ok();
                     let size_bytes = metadata.map(|m| m.len()).unwrap_or(0);
 
-                    // 解析创建时间 (跳过 "backup_" 7 字符和 ".mmytodo" 8 字符)
-                    let created_at = Self::parse_backup_time(
-                        &filename[7..filename.len() - 8]
-                    ).unwrap_or(0);
+                    // 解析创建时间和备份类型
+                    let (created_at, backup_type) = Self::parse_backup_time(&filename)
+                        .unwrap_or((0, BackupType::Full));
 
                     backups.push(BackupInfo {
                         filename,
                         created_at,
                         size_bytes,
+                        backup_type,
                     });
                 }
             }
@@ -406,8 +469,7 @@ impl BackupManager {
                         .unwrap_or("");
 
                     if filename.starts_with("backup_") {
-                        let timestamp_str = &filename[7..filename.len() - 8];
-                        if let Some(backup_time) = Self::parse_backup_time(timestamp_str) {
+                        if let Some((backup_time, _)) = Self::parse_backup_time(filename) {
                             if now - backup_time > retention_ms {
                                 fs::remove_file(&path).ok();
                             }

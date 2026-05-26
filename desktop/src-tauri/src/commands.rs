@@ -471,7 +471,23 @@ pub fn update_backup_settings(backup_mgr: State<'_, Arc<BackupManager>>, setting
 
 #[tauri::command]
 pub fn create_backup_now(app: tauri::AppHandle, backup_mgr: State<'_, Arc<BackupManager>>) -> Result<String, String> {
-    backup_mgr.create_backup(&app).ok_or("创建备份失败".to_string())
+    backup_mgr.create_backup_default(&app).ok_or("创建备份失败".to_string())
+}
+
+/// 创建指定类型的备份（quick/full）
+#[tauri::command]
+pub fn create_backup_with_type(
+    app: tauri::AppHandle,
+    backup_mgr: State<'_, Arc<BackupManager>>,
+    backup_type: String,
+) -> Result<String, String> {
+    use crate::backup::BackupType;
+    let bt = match backup_type.as_str() {
+        "quick" => BackupType::Quick,
+        "full" => BackupType::Full,
+        _ => BackupType::Quick,
+    };
+    backup_mgr.create_backup(&app, bt).ok_or("创建备份失败".to_string())
 }
 
 #[tauri::command]

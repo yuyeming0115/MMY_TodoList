@@ -7,12 +7,12 @@ import {
   DownloadOutline as ExportIcon, CloudUploadOutline as ImportIcon,
   ArrowBackOutline as BackIcon, Star as StarIcon, CloudOutline as BackupIcon,
   TrashOutline as TrashIcon, RefreshOutline as RestoreIcon, TimeOutline as TimeIcon,
-  CloseOutline as CloseIcon,
+  CloseOutline as CloseIcon, SaveOutline as SaveIcon,
 } from '@vicons/ionicons5';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useI18n } from '../composables/useI18n';
 import { useMessage } from 'naive-ui';
-import { exportData, importData, getBackupSettings, updateBackupSettings, createBackupNow, listBackups, restoreBackup, deleteBackup, updateGlobalShortcut } from '../utils/db';
+import { exportData, importData, getBackupSettings, updateBackupSettings, createBackupWithType, listBackups, restoreBackup, deleteBackup, updateGlobalShortcut } from '../utils/db';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import type { ExportData, BackupSettings, BackupInfo } from '../types';
@@ -38,7 +38,14 @@ const backupSettings = ref<BackupSettings>({
   backupOnClose: true,
   backupHourly: false,
   retentionDays: 7,
+  defaultBackupType: 'quick',
 });
+
+// 备份类型选项
+const backupTypeOptions = computed(() => [
+  { label: t('settings.backupTypeQuick'), value: 'quick' },
+  { label: t('settings.backupTypeFull'), value: 'full' },
+]);
 
 // 备份列表
 const backups = ref<BackupInfo[]>([]);
@@ -53,8 +60,8 @@ async function loadBackupData() {
   }
 }
 
-// 开始捕获快捷键
-async function updateBackup(key: keyof BackupSettings, value: boolean | number) {
+// 更新备份设置
+async function updateBackup(key: keyof BackupSettings, value: boolean | number | string) {
   (backupSettings.value as any)[key] = value;
   try {
     await updateBackupSettings(backupSettings.value);
@@ -65,10 +72,22 @@ async function updateBackup(key: keyof BackupSettings, value: boolean | number) 
   }
 }
 
-// 立即备份
-async function handleBackupNow() {
+// 立即快速备份
+async function handleBackupQuick() {
   try {
-    const filename = await createBackupNow();
+    const filename = await createBackupWithType('quick');
+    message.success(t('messages.backupSuccess', { filename }));
+    await loadBackupData();
+  } catch (e) {
+    message.error(t('messages.backupFailed'));
+    console.error(e);
+  }
+}
+
+// 立即完整备份
+async function handleBackupFull() {
+  try {
+    const filename = await createBackupWithType('full');
     message.success(t('messages.backupSuccess', { filename }));
     await loadBackupData();
   } catch (e) {
@@ -118,6 +137,11 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// 格式化备份类型显示
+function formatBackupType(type: string): string {
+  return type === 'full' ? t('settings.backupTypeFull') : t('settings.backupTypeQuick');
 }
 
 // 快捷键设置
@@ -389,14 +413,31 @@ function goBack() {
             />
             <span class="retention-value">{{ backupSettings.retentionDays }} {{ t('settings.daysUnit') }}</span>
           </NFormItem>
+          <NFormItem :label="t('settings.defaultBackupType')">
+            <NSelect
+              :value="backupSettings.defaultBackupType"
+              :options="backupTypeOptions"
+              @update:value="(v: string) => updateBackup('defaultBackupType', v)"
+              style="width: 120px"
+            />
+          </NFormItem>
         </NForm>
 
-        <NButton type="primary" style="margin-top: 8px" @click="handleBackupNow">
-          <template #icon>
-            <NIcon :component="BackupIcon" />
-          </template>
-          {{ t('settings.backupNow') }}
-        </NButton>
+        <!-- 立即备份按钮组 -->
+        <div class="backup-buttons">
+          <NButton type="primary" @click="handleBackupQuick">
+            <template #icon>
+              <NIcon :component="SaveIcon" />
+            </template>
+            {{ t('settings.backupQuick') }}
+          </NButton>
+          <NButton @click="handleBackupFull">
+            <template #icon>
+              <NIcon :component="BackupIcon" />
+            </template>
+            {{ t('settings.backupFull') }}
+          </NButton>
+        </div>
 
         <NText depth="3" style="font-size: 12px; margin-top: 8px; display: block; line-height: 1.6">
           {{ t('settings.backupLocation') }}
@@ -411,7 +452,7 @@ function goBack() {
             <div class="backup-info">
               <NIcon :component="TimeIcon" size="16" style="color: #4A90D9" />
               <span class="backup-time">{{ formatBackupTime(backup.createdAt) }}</span>
-              <span class="backup-filename">{{ backup.filename }}</span>
+              <span class="backup-type-tag" :class="backup.backupType">{{ formatBackupType(backup.backupType) }}</span>
               <span class="backup-size">{{ formatFileSize(backup.sizeBytes) }}</span>
             </div>
             <div class="backup-actions">
@@ -724,6 +765,42 @@ html.dark .backup-time {
 
 html.dark .backup-size {
   color: #999;
+}
+
+/* 备份类型标签 */
+.backup-type-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.backup-type-tag.quick {
+  background: #e8f5e9;
+  color: #28C840;
+}
+
+html.dark .backup-type-tag.quick {
+  background: rgba(40, 200, 64, 0.15);
+  color: rgba(40, 200, 64, 0.8);
+}
+
+.backup-type-tag.full {
+  background: #fff3e0;
+  color: #FFB800;
+}
+
+html.dark .backup-type-tag.full {
+  background: rgba(255, 184, 0, 0.15);
+  color: rgba(255, 184, 0, 0.8);
+}
+
+/* 备份按钮组 */
+.backup-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
 }
 
 .backup-filename {
