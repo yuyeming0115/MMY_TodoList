@@ -84,6 +84,29 @@ pub fn run() {
                 }
             }
 
+            // Windows 端：设置窗口圆角（消除角落白色像素）
+            #[cfg(target_os = "windows")]
+            {
+                use windows::Win32::Graphics::Dwm::DwmSetWindowAttribute;
+                use windows::Win32::Graphics::Dwm::DWMWINDOWATTRIBUTE;
+
+                if let Some(win) = app.get_webview_window("main") {
+                    if let Ok(hwnd) = win.hwnd() {
+                        unsafe {
+                            // DWMWA_WINDOW_CORNER_PREFERENCE = 33
+                            // DWMWCP_ROUND = 2 (中等圆角)
+                            let corner_preference: u32 = 2; // DWMWCP_ROUND
+                            DwmSetWindowAttribute(
+                                hwnd,
+                                DWMWINDOWATTRIBUTE(33), // DWMWA_WINDOW_CORNER_PREFERENCE
+                                &corner_preference as *const u32 as *const std::ffi::c_void,
+                                std::mem::size_of::<u32>() as u32,
+                            ).ok();
+                        }
+                    }
+                }
+            }
+
             // 监听窗口关闭事件，改为隐藏到托盘（同时备份）
             let app_handle = app.handle().clone();
             let backup_for_hide = backup_arc.clone();
@@ -143,10 +166,14 @@ pub fn run() {
             commands::reorder_clipboard_categories,
             // 剪贴板项目
             commands::get_clipboard_items,
+            commands::get_clipboard_items_paginated,
+            commands::get_clipboard_items_count,
             commands::add_clipboard_item,
             commands::update_clipboard_item,
             commands::delete_clipboard_item,
             commands::reorder_clipboard_items,
+            commands::batch_delete_clipboard_items,
+            commands::batch_update_clipboard_items_category,
             commands::read_clipboard_image_file,
             commands::set_clipboard_item_expiry,
             commands::cleanup_expired_items,

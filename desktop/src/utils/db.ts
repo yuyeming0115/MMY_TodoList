@@ -95,6 +95,16 @@ export async function getClipboardItems(): Promise<ClipboardItem[]> {
   return invoke('get_clipboard_items');
 }
 
+/// 分页获取剪贴板项目（启动时只加载 limit 条）
+export async function getClipboardItemsPaginated(limit: number, offset: number): Promise<ClipboardItem[]> {
+  return invoke('get_clipboard_items_paginated', { limit, offset });
+}
+
+/// 获取剪贴板项目总数
+export async function getClipboardItemsCount(): Promise<number> {
+  return invoke('get_clipboard_items_count');
+}
+
 export async function addClipboardItem(item: Omit<ClipboardItem, 'id' | 'createdAt'>): Promise<ClipboardItem> {
   return invoke('add_clipboard_item', { item });
 }

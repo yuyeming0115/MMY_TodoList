@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 use uuid::Uuid;
-use image::GenericImageView;
 use crate::models::{Category, Task, AppSettings, ClipboardCategory, ClipboardItem};
 
 pub struct Database {
@@ -165,9 +164,50 @@ impl Database {
 
         // 迁移：为已有数据库添加新列
         conn.execute("ALTER TABLE clipboard_items ADD COLUMN image_path TEXT", []).ok();
-        conn.execute("ALTER TABLE clipboard_items ADD COLUMN thumbnail_base64 TEXT", []).ok();
         conn.execute("ALTER TABLE clipboard_items ADD COLUMN expires_at INTEGER", []).ok();
         conn.execute("ALTER TABLE clipboard_items ADD COLUMN locked INTEGER DEFAULT 0", []).ok();
+
+        // 迁移：去掉 thumbnail_base64 列（SQLite 不支持 DROP COLUMN，需要重建表）
+        // 检查是否已有 thumbnail_base64 列（旧版本），如果有则迁移
+        let has_thumbnail: bool = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('clipboard_items') WHERE name='thumbnail_base64'",
+            [],
+            |r| r.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+
+        if has_thumbnail {
+            // 创建新表（不含 thumbnail_base64）
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS clipboard_items_new (
+                    id TEXT PRIMARY KEY,
+                    category_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    image_base64 TEXT,
+                    image_path TEXT,
+                    priority INTEGER DEFAULT 1,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at INTEGER,
+                    expires_at INTEGER,
+                    locked INTEGER DEFAULT 0
+                )",
+                [],
+            )?;
+
+            // 复制数据（不含 thumbnail_base64）
+            conn.execute(
+                "INSERT INTO clipboard_items_new
+                 SELECT id, category_id, title, content, image_base64, image_path, priority, sort_order, created_at, expires_at, locked
+                 FROM clipboard_items",
+                [],
+            )?;
+
+            // 删除旧表
+            conn.execute("DROP TABLE clipboard_items", [])?;
+
+            // 重命名新表
+            conn.execute("ALTER TABLE clipboard_items_new RENAME TO clipboard_items", [])?;
+        }
 
         // 初始化默认剪贴板分类（文本、图像、收藏）
         let cb_count: i64 = conn.query_row("SELECT COUNT(*) FROM clipboard_categories", [], |r| r.get(0))?;
@@ -671,7 +711,7 @@ impl Database {
             .unwrap()
             .as_millis() as i64;
         let mut stmt = conn.prepare(
-            "SELECT id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at, locked FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1 ORDER BY sort_order"
+            "SELECT id, category_id, title, content, image_base64, image_path, priority, sort_order, created_at, expires_at, locked FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1 ORDER BY sort_order"
         )?;
 
         let items = stmt.query_map([now], |row| {
@@ -682,22 +722,66 @@ impl Database {
                 content: row.get(3)?,
                 image_base64: row.get(4)?,
                 image_path: row.get(5)?,
-                thumbnail_base64: row.get(6)?,
-                priority: row.get(7)?,
-                sort_order: row.get(8)?,
-                created_at: row.get(9)?,
-                expires_at: row.get(10)?,
-                locked: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+                priority: row.get(6)?,
+                sort_order: row.get(7)?,
+                created_at: row.get(8)?,
+                expires_at: row.get(9)?,
+                locked: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
             })
         })?.collect::<SqliteResult<Vec<ClipboardItem>>>();
 
         items
     }
 
+    /// 分页获取剪贴板项目（启动时只加载 limit 条）
+    pub fn get_clipboard_items_paginated(&self, limit: i32, offset: i32) -> SqliteResult<Vec<ClipboardItem>> {
+        let conn = self.conn.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let mut stmt = conn.prepare(
+            "SELECT id, category_id, title, content, image_base64, image_path, priority, sort_order, created_at, expires_at, locked FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1 ORDER BY sort_order LIMIT ?2 OFFSET ?3"
+        )?;
+
+        let items = stmt.query_map(rusqlite::params![now, limit as i64, offset as i64], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                category_id: row.get(1)?,
+                title: row.get(2)?,
+                content: row.get(3)?,
+                image_base64: row.get(4)?,
+                image_path: row.get(5)?,
+                priority: row.get(6)?,
+                sort_order: row.get(7)?,
+                created_at: row.get(8)?,
+                expires_at: row.get(9)?,
+                locked: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+            })
+        })?.collect::<SqliteResult<Vec<ClipboardItem>>>();
+
+        items
+    }
+
+    /// 获取剪贴板项目总数（用于判断是否有更多数据）
+    pub fn get_clipboard_items_count(&self) -> SqliteResult<i64> {
+        let conn = self.conn.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM clipboard_items WHERE expires_at IS NULL OR expires_at > ?1",
+            [now],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
     pub fn add_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT OR REPLACE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at, locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT OR REPLACE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, priority, sort_order, created_at, expires_at, locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 &item.id,
                 &item.category_id,
@@ -705,7 +789,6 @@ impl Database {
                 &item.content,
                 &item.image_base64,
                 &item.image_path,
-                &item.thumbnail_base64,
                 &item.priority,
                 &item.sort_order,
                 &item.created_at,
@@ -719,14 +802,13 @@ impl Database {
     pub fn update_clipboard_item(&self, item: &ClipboardItem) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE clipboard_items SET category_id = ?1, title = ?2, content = ?3, image_base64 = ?4, image_path = ?5, thumbnail_base64 = ?6, priority = ?7, sort_order = ?8, expires_at = ?9, locked = ?10 WHERE id = ?11",
+            "UPDATE clipboard_items SET category_id = ?1, title = ?2, content = ?3, image_base64 = ?4, image_path = ?5, priority = ?6, sort_order = ?7, expires_at = ?8, locked = ?9 WHERE id = ?10",
             rusqlite::params![
                 &item.category_id,
                 &item.title,
                 &item.content,
                 &item.image_base64,
                 &item.image_path,
-                &item.thumbnail_base64,
                 &item.priority,
                 &item.sort_order,
                 &item.expires_at,
@@ -765,6 +847,55 @@ impl Database {
             )?;
         }
         Ok(())
+    }
+
+    /// 批量删除剪贴板项目（使用事务，一次提交）
+    pub fn batch_delete_clipboard_items(&self, ids: &[String]) -> SqliteResult<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        let mut deleted = 0usize;
+        for id in ids {
+            // 获取图片路径
+            let image_path: Option<String> = tx.query_row(
+                "SELECT image_path FROM clipboard_items WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            ).ok();
+
+            // 删除数据库记录
+            let affected = tx.execute("DELETE FROM clipboard_items WHERE id = ?1", [id])?;
+            deleted += affected;
+
+            // 删除图片文件
+            if let Some(path) = image_path {
+                let p = std::path::PathBuf::from(&path);
+                if p.exists() {
+                    std::fs::remove_file(p).ok();
+                }
+            }
+        }
+
+        tx.commit()?;
+        Ok(deleted)
+    }
+
+    /// 批量更新剪贴板项目分类（使用事务，一次提交）
+    pub fn batch_update_clipboard_items_category(&self, ids: &[String], category_id: &str) -> SqliteResult<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        let mut updated = 0usize;
+        for id in ids {
+            let affected = tx.execute(
+                "UPDATE clipboard_items SET category_id = ?1 WHERE id = ?2",
+                [category_id, id],
+            )?;
+            updated += affected;
+        }
+
+        tx.commit()?;
+        Ok(updated)
     }
 
     /// 检查文本内容是否已存在于剪贴板项目中（去重用）
@@ -806,8 +937,8 @@ impl Database {
 
         // 使用 INSERT OR IGNORE 防止竞态重复
         let affected = conn.execute(
-            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at)
-             VALUES (?1, ?2, ?3, ?4, NULL, NULL, NULL, 2, ?5, ?6, ?7)",
+            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, priority, sort_order, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, NULL, NULL, 2, ?5, ?6, ?7)",
             rusqlite::params![&id, category_id, &title, content, min_order - 1, &now, expires_at],
         )?;
         if affected == 0 {
@@ -824,10 +955,11 @@ impl Database {
             .unwrap()
             .as_millis() as i64;
 
-        // 7 天过期
-        let expires_at = now + (7 * 24 * 60 * 60 * 1000);
+        // 1 小时过期（减少图片堆积）
+        let expires_at = now + (1 * 60 * 60 * 1000);
 
-        let (image_path, thumbnail_base64) = self.save_clipboard_image(&id, image_base64)
+        // 只保存图片文件，不生成缩略图存数据库
+        let image_path = self.save_clipboard_image_file(&id, image_base64)
             .map_err(|e| {
                 eprintln!("[剪贴板] 保存图片失败: {:?}", e);
                 e
@@ -846,9 +978,9 @@ impl Database {
 
         // 使用 INSERT OR IGNORE 防止竞态重复
         let affected = conn.execute(
-            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, thumbnail_base64, priority, sort_order, created_at, expires_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 2, ?8, ?9, ?10)",
-            rusqlite::params![&id, category_id, "剪贴板图片", "", "", image_path, thumbnail_base64, min_order - 1, &now, expires_at],
+            "INSERT OR IGNORE INTO clipboard_items (id, category_id, title, content, image_base64, image_path, priority, sort_order, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 2, ?7, ?8, ?9)",
+            rusqlite::params![&id, category_id, "剪贴板图片", "", "", image_path, min_order - 1, &now, expires_at],
         ).map_err(|e| {
             eprintln!("[剪贴板] 插入数据库失败: {:?}", e);
             e
@@ -860,8 +992,8 @@ impl Database {
         Ok(())
     }
 
-    /// 保存剪贴板图片到文件系统，返回 (文件路径, 缩略图 base64)
-    pub fn save_clipboard_image(&self, id: &str, image_base64: &str) -> SqliteResult<(String, String)> {
+    /// 只保存图片文件，不生成缩略图（学习 Ditto：数据库只存路径）
+    pub fn save_clipboard_image_file(&self, id: &str, image_base64: &str) -> SqliteResult<String> {
         // 去掉 data:image/...;base64, 前缀
         let base64_data = if let Some(idx) = image_base64.find(",") {
             &image_base64[idx + 1..]
@@ -889,55 +1021,17 @@ impl Database {
         let file_path = img_dir.join(format!("{}.png", id));
         let file_path_str = file_path.to_str().unwrap_or("").to_string();
 
-        // 保存原图
+        // 只保存原图，不生成缩略图（学习 Ditto）
         std::fs::write(&file_path, &decoded)
             .map_err(|e| {
                 eprintln!("[剪贴板] 写入图片文件失败: {:?}, 路径: {:?}", e, file_path);
                 rusqlite::Error::ToSqlConversionFailure(Box::new(e))
             })?;
 
-        // 生成缩略图（最大宽度 300px）
-        let thumbnail_base64 = self.generate_thumbnail(&decoded)
-            .map_err(|e| {
-                eprintln!("[剪贴板] 生成缩略图失败: {:?}", e);
-                e
-            })?;
-
-        Ok((file_path_str, thumbnail_base64))
+        Ok(file_path_str)
     }
 
-    /// 生成缩略图 base64（最大宽度 300px）
-    fn generate_thumbnail(&self, image_data: &[u8]) -> SqliteResult<String> {
-        use base64::Engine;
-        use image::{ImageFormat, ImageReader};
-
-        let img = ImageReader::with_format(std::io::Cursor::new(image_data), ImageFormat::Png)
-            .decode()
-            .map_err(|e| {
-                eprintln!("[剪贴板] 缩略图解码失败: {:?}", e);
-                rusqlite::Error::ToSqlConversionFailure(Box::new(e))
-            })?;
-
-        let (width, height) = img.dimensions();
-        let max_width: u32 = 300;
-        let thumbnail = if width > max_width {
-            let new_height = (max_width as f32 / width as f32 * height as f32) as u32;
-            img.resize(max_width, new_height, image::imageops::FilterType::Lanczos3)
-        } else {
-            img
-        };
-
-        let mut thumbnail_buf = Vec::new();
-        thumbnail.write_to(
-            &mut std::io::Cursor::new(&mut thumbnail_buf),
-            image::ImageFormat::Png,
-        ).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-
-        let thumbnail_b64 = base64::engine::general_purpose::STANDARD.encode(&thumbnail_buf);
-        Ok(format!("data:image/png;base64,{}", thumbnail_b64))
-    }
-
-    /// 根据文件路径读取原图字节（用于写入系统剪贴板）
+    /// 读取剪贴板图片文件（返回 base64 data URL）
     pub fn read_clipboard_image_file(&self, path: &str) -> SqliteResult<Vec<u8>> {
         let p = std::path::PathBuf::from(path);
         if !p.exists() {
