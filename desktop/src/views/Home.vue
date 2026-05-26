@@ -250,8 +250,11 @@ const editingTask = ref<Task | null>(null);
 
 // 拖拽状态
 const isDragging = ref(false);
-// 搜索时或自动排序时禁用拖拽
-const dragEnabled = computed(() => !taskStore.searchQuery && taskStore.sortMode === 'custom');
+// 编辑状态跟踪（编辑描述/标题时禁用拖拽）
+const isEditingDesc = ref(false);
+const isEditingTitle = ref(false);
+// 搜索时、自动排序时、编辑描述/标题时禁用拖拽
+const dragEnabled = computed(() => !taskStore.searchQuery && taskStore.sortMode === 'custom' && !isEditingDesc.value && !isEditingTitle.value);
 
 const filteredTasks = computed(() => {
   let tasks = [...taskStore.tasks];
@@ -922,6 +925,8 @@ async function hideToTray() {
                           @update-description="updateTaskDescription"
                           @update-thumbnail="updateTaskThumbnail"
                           @move-to-top="moveTaskToTop"
+                          @editing-desc-change="(val: boolean) => isEditingDesc = val"
+                          @editing-title-change="(val: boolean) => isEditingTitle = val"
                         />
                       </div>
                     </template>

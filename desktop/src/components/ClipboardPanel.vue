@@ -356,8 +356,9 @@ const filteredItems = computed(() => clipboardStore.filteredItems);
 // 预缓存 ID 数组（避免每次 Shift 加选都执行 map）
 const filteredItemIds = computed(() => filteredItems.value.map(i => i.id));
 
-// 拖拽是否启用（仅在自定义排序模式下）
-const dragEnabled = computed(() => clipboardStore.sortMode === 'custom');
+// 拖拽是否启用（仅在自定义排序模式下，且不在编辑状态）
+const isEditingItem = ref(false);
+const dragEnabled = computed(() => clipboardStore.sortMode === 'custom' && !isEditingItem.value);
 
 // 同步到拖拽列表
 watch(filteredItems, (val) => {
@@ -511,6 +512,7 @@ function cancelEdit() {
             @batch-lock="batchLock"
             @batch-delete="deleteSelected"
             @move-to-top="moveItemToTop"
+            @editing-change="(val: boolean) => isEditingItem = val"
           />
         </div>
       </template>
@@ -541,6 +543,7 @@ function cancelEdit() {
           @batch-lock="batchLock"
           @batch-delete="deleteSelected"
           @move-to-top="moveItemToTop"
+          @editing-change="(val: boolean) => isEditingItem = val"
         />
       </div>
     </div>
@@ -577,6 +580,7 @@ function cancelEdit() {
             @batch-lock="batchLock"
             @batch-delete="deleteSelected"
             @move-to-top="moveItemToTop"
+            @editing-change="(val: boolean) => isEditingItem = val"
           />
         </div>
       </div>

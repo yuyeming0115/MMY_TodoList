@@ -44,6 +44,8 @@ const emit = defineEmits<{
   (e: 'updateDescription', task: Task, description: string | undefined): void;
   (e: 'updateThumbnail', task: Task, thumbnail: string | undefined): void;
   (e: 'moveToTop', task: Task): void;
+  (e: 'editingDescChange', isEditing: boolean): void;
+  (e: 'editingTitleChange', isEditing: boolean): void;
 }>();
 
 // 截图提示状态
@@ -67,6 +69,7 @@ watch(() => props.isEditingTitle, (val) => {
 // 开始编辑标题
 function startEditTitle() {
   isEditing.value = true;
+  emit('editingTitleChange', true);
   // 如果是默认文字，清空；否则保留原标题
   editTitleValue.value = props.task.title === '待输入任务内容……' ? '' : props.task.title;
   nextTick(() => {
@@ -79,12 +82,14 @@ function saveTitle() {
   const newTitle = editTitleValue.value.trim() || '待输入任务内容……';
   emit('updateTitle', props.task, newTitle);
   isEditing.value = false;
+  emit('editingTitleChange', false);
 }
 
 // 取消编辑标题
 function cancelEdit() {
   isEditing.value = false;
   editTitleValue.value = '';
+  emit('editingTitleChange', false);
 }
 
 // 描述编辑状态
@@ -103,6 +108,7 @@ const editRows = computed(() => {
 function startEditDesc() {
   isEditingDesc.value = true;
   isExpanded.value = true;
+  emit('editingDescChange', true);
   // 如果没有描述，初始化第一行编号
   if (!props.task.description) {
     editDescValue.value = '1、';
@@ -119,12 +125,14 @@ function saveDesc() {
   const newDesc = editDescValue.value.trim() || undefined;
   emit('updateDescription', props.task, newDesc);
   isEditingDesc.value = false;
+  emit('editingDescChange', false);
 }
 
 // 取消编辑描述
 function cancelDescEdit() {
   isEditingDesc.value = false;
   editDescValue.value = '';
+  emit('editingDescChange', false);
 }
 
 // 按下回车时，在新行添加下一个编号
@@ -644,6 +652,7 @@ function handleToggleStatus() {
           v-model="editTitleValue"
           class="title-input"
           placeholder="输入任务内容"
+          @mousedown.stop
           @blur="saveTitle"
           @keyup.enter="saveTitle"
           @keyup.escape="cancelEdit"
@@ -733,6 +742,7 @@ function handleToggleStatus() {
           @blur="saveDesc"
           @keydown="handleDescKeydown"
           @keyup.escape="cancelDescEdit"
+          @mousedown.stop
           @click.stop
         />
       </div>

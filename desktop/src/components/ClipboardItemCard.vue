@@ -34,6 +34,7 @@ const emit = defineEmits<{
   (e: 'batch-lock'): void;
   (e: 'batch-delete'): void;
   (e: 'move-to-top', item: ClipboardItem): void;
+  (e: 'editing-change', isEditing: boolean): void;
 }>();
 
 const message = useMessage();
@@ -414,6 +415,7 @@ async function handleMenuSelect(key: string) {
 
 async function startEdit() {
   isEditing.value = true;
+  emit('editing-change', true);
   editTitle.value = props.item.title;
   editContent.value = props.item.content;
   await nextTick();
@@ -446,6 +448,7 @@ function saveEdit() {
   };
   clipboardStore.updateItem(updated);
   isEditing.value = false;
+  emit('editing-change', false);
   message.success(t('messages.saved'));
 }
 
@@ -453,6 +456,7 @@ function cancelEdit() {
   isEditing.value = false;
   editTitle.value = '';
   editContent.value = '';
+  emit('editing-change', false);
 }
 
 // 跨应用拖拽处理：写入剪贴板 + text/uri-list，拖拽结束自动 Ctrl+V
