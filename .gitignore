@@ -5,6 +5,7 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+releases/
 
 # Tauri
 desktop/src-tauri/target/
