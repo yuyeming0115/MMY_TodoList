@@ -2476,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "mmy_todo_lib"
-version = "1.12.0"
+version = "1.12.1"
 dependencies = [
  "arboard",
  "base64 0.22.1",
