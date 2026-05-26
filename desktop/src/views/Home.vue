@@ -1057,8 +1057,6 @@ html, body, #app {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: transparent;
   color: #333;
-  /* 强制裁剪整个页面角落 */
-  overflow: hidden;
 }
 
 /* 深色模式 */
