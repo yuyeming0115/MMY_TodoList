@@ -801,7 +801,6 @@ html.dark .backup-type-tag.full {
   gap: 12px;
   margin-top: 12px;
 }
-}
 
 .backup-filename {
   font-size: 12px;
