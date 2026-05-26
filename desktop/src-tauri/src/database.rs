@@ -898,6 +898,43 @@ impl Database {
         Ok(updated)
     }
 
+    /// 删除所有未锁定的剪贴板项（包括不在锁定分类中的项）
+    pub fn clear_all_unlocked_clipboard_items(&self) -> SqliteResult<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        // 获取所有未锁定项的图片路径（需要删除文件）
+        let image_paths: Vec<String> = tx.prepare(
+            "SELECT image_path FROM clipboard_items
+             WHERE (locked IS NULL OR locked = 0)
+             AND category_id NOT IN (SELECT id FROM clipboard_categories WHERE locked = 1)"
+        )?.query_map([], |row| row.get::<_, Option<String>>(0))?
+        .filter_map(|r| r.ok())
+        .flatten()
+        .filter(|p: &String| !p.is_empty())
+        .collect();
+
+        // 删除数据库记录
+        let deleted = tx.execute(
+            "DELETE FROM clipboard_items
+             WHERE (locked IS NULL OR locked = 0)
+             AND category_id NOT IN (SELECT id FROM clipboard_categories WHERE locked = 1)",
+            [],
+        )?;
+
+        tx.commit()?;
+
+        // 删除图片文件
+        for path in image_paths {
+            let p = std::path::PathBuf::from(&path);
+            if p.exists() {
+                std::fs::remove_file(p).ok();
+            }
+        }
+
+        Ok(deleted)
+    }
+
     /// 检查文本内容是否已存在于剪贴板项目中（去重用）
     pub fn clipboard_text_exists(&self, content: &str) -> SqliteResult<bool> {
         let conn = self.conn.lock().unwrap();

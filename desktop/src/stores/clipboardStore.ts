@@ -353,6 +353,14 @@ export const useClipboardStore = defineStore('clipboard', () => {
     return count;
   }
 
+  // 清空所有未锁定的剪贴板项
+  async function clearAllUnlocked(): Promise<number> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const count = await invoke<number>('clear_all_unlocked_clipboard_items');
+    await load();
+    return count;
+  }
+
   // 锁定/解锁项目
   async function lockItem(item: ClipboardItem): Promise<void> {
     item.locked = true;
@@ -513,6 +521,7 @@ export const useClipboardStore = defineStore('clipboard', () => {
     pasteFromClipboard,
     setItemExpiry,
     cleanupExpiredItems,
+    clearAllUnlocked,
     lockItem,
     unlockItem,
     toggleItemLock,

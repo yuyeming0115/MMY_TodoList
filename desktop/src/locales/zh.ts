@@ -49,6 +49,7 @@ export default {
     enterSelectMode: '进入选择模式',
     delete: '删除',
     cleanupExpired: '清理已过期项目',
+    clearAllUnlocked: '清空所有未锁定项',
   },
   // 过期时间选项
   expiry: {
@@ -169,6 +170,7 @@ export default {
     imageNotFound: '图片文件已被删除，卡片已自动清理',
     noExpiredItems: '没有已过期项目',
     cleanupDone: '已清理 {count} 个过期项目',
+    clearAllUnlockedDone: '已清空 {count} 个未锁定项',
     folderOpened: '已打开文件夹',
     openFolderFailed: '打开文件夹失败',
     favoriteCategoryNotFound: '收藏分类不存在，请刷新后重试',

@@ -222,6 +222,10 @@ const contextMenuOptions = computed(() => {
   options.push({ label: t('contextMenu.delete'), key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
   options.push({ type: 'divider', key: 'd3' });
   options.push({ label: t('contextMenu.cleanupExpired'), key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 16, style: { color: '#E05252' } }) });
+  // 选择模式下显示"清空所有未锁定项"
+  if (props.showCheckbox) {
+    options.push({ label: t('contextMenu.clearAllUnlocked'), key: 'clear_all_unlocked', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
+  }
   return options;
 });
 
@@ -363,6 +367,11 @@ async function handleMenuSelect(key: string) {
     } else {
       message.info(t('messages.noExpiredItems'));
     }
+    return;
+  }
+  if (key === 'clear_all_unlocked') {
+    const count = await clipboardStore.clearAllUnlocked();
+    message.success(t('messages.clearAllUnlockedDone', { count }));
     return;
   }
   if (key === 'copy') copyContent();

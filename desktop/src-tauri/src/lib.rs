@@ -174,6 +174,7 @@ pub fn run() {
             commands::reorder_clipboard_items,
             commands::batch_delete_clipboard_items,
             commands::batch_update_clipboard_items_category,
+            commands::clear_all_unlocked_clipboard_items,
             commands::read_clipboard_image_file,
             commands::set_clipboard_item_expiry,
             commands::cleanup_expired_items,

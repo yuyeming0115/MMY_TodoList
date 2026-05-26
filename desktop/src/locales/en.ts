@@ -49,6 +49,7 @@ export default {
     enterSelectMode: 'Enter select mode',
     delete: 'Delete',
     cleanupExpired: 'Cleanup expired items',
+    clearAllUnlocked: 'Clear all unlocked items',
   },
   // 过期时间选项
   expiry: {
@@ -169,6 +170,7 @@ export default {
     imageNotFound: 'Image file deleted, card auto-cleaned',
     noExpiredItems: 'No expired items',
     cleanupDone: 'Cleaned {count} expired items',
+    clearAllUnlockedDone: 'Cleared {count} unlocked items',
     folderOpened: 'Folder opened',
     openFolderFailed: 'Failed to open folder',
     favoriteCategoryNotFound: 'Favorite category not found, please refresh',

@@ -276,6 +276,12 @@ pub fn batch_update_clipboard_items_category(db: State<'_, Arc<Database>>, ids: 
     db.batch_update_clipboard_items_category(&ids, &category_id).map_err(|e| e.to_string())
 }
 
+/// 清空所有未锁定的剪贴板项
+#[tauri::command]
+pub fn clear_all_unlocked_clipboard_items(db: State<'_, Arc<Database>>) -> Result<usize, String> {
+    db.clear_all_unlocked_clipboard_items().map_err(|e| e.to_string())
+}
+
 /// 读取剪贴板图片文件（返回 base64 data URL）
 #[tauri::command]
 pub fn read_clipboard_image_file(db: State<'_, Arc<Database>>, path: String) -> Result<String, String> {
