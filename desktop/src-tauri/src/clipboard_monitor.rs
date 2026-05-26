@@ -118,6 +118,9 @@ impl ClipboardMonitor {
                 // 2. 处理图像
                 match clip_image {
                     Ok(Some(img_data)) => {
+                        eprintln!("[剪贴板] 成功读取图片: {}x{}, PNG数据 {} 字节",
+                            img_data.width, img_data.height, img_data.png_data.len());
+
                         let pixels = img_data.width as u64 * img_data.height as u64;
 
                         // 计算图片 hash（基于 PNG 数据）
@@ -126,19 +129,25 @@ impl ClipboardMonitor {
                         if last_image_hash.as_ref() != Some(&img_hash) {
                             // 判断是否为大图片：超过像素限制，直接保存文件
                             let is_large_image = pixels > MAX_IMAGE_PIXELS_FOR_BASE64;
+                            eprintln!("[剪贴板] 像素数: {}, 是否大图片: {}", pixels, is_large_image);
 
                             if is_large_image {
                                 // 大图片：直接保存 PNG 文件，不转 base64
+                                eprintln!("[剪贴板] 大图片处理: 直接保存文件...");
                                 let result = db.add_auto_clipboard_image_large(
                                     &img_data.width,
                                     &img_data.height,
                                     &img_data.png_data,
                                 );
                                 if result.is_ok() {
+                                    eprintln!("[剪贴板] 大图片保存成功!");
                                     app_handle.emit("clipboard-changed", ()).ok();
+                                } else {
+                                    eprintln!("[剪贴板] 大图片保存失败: {:?}", result.err());
                                 }
                             } else {
                                 // 小图片：转 base64 存入数据库
+                                eprintln!("[剪贴板] 小图片处理: 转 base64...");
                                 let base64 = format!(
                                     "data:image/png;base64,{}",
                                     base64::Engine::encode(
@@ -146,17 +155,27 @@ impl ClipboardMonitor {
                                         &img_data.png_data
                                     )
                                 );
+                                eprintln!("[剪贴板] base64长度: {}", base64.len());
                                 if base64.len() <= MAX_IMAGE_BASE64_LEN {
                                     let result = db.add_auto_clipboard_image(&base64);
                                     if result.is_ok() {
+                                        eprintln!("[剪贴板] 小图片保存成功!");
                                         app_handle.emit("clipboard-changed", ()).ok();
+                                    } else {
+                                        eprintln!("[剪贴板] 小图片保存失败: {:?}", result.err());
                                     }
+                                } else {
+                                    eprintln!("[剪贴板] base64超长，跳过");
                                 }
                             }
                             last_image_hash = Some(img_hash);
+                        } else {
+                            eprintln!("[剪贴板] 图片hash重复，跳过");
                         }
                     }
-                    Ok(None) => {}
+                    Ok(None) => {
+                        eprintln!("[剪贴板] 未读取到图片");
+                    }
                     Err(e) => {
                         eprintln!("[剪贴板] 图像读取 panic: {:?}", e);
                     }
@@ -221,17 +240,42 @@ fn try_read_image_data() -> Option<ClipboardImageData> {
     use arboard::Clipboard;
     use image::{DynamicImage, ImageFormat};
 
-    let mut clipboard = Clipboard::new().ok()?;
-    let img_data = clipboard.get_image().ok()?;
+    let clipboard = Clipboard::new();
+    if clipboard.is_err() {
+        eprintln!("[剪贴板] arboard::Clipboard::new() 失败: {:?}", clipboard.err());
+        return None;
+    }
+    let mut clipboard = clipboard.ok()?;
+
+    let img_result = clipboard.get_image();
+    if img_result.is_err() {
+        eprintln!("[剪贴板] clipboard.get_image() 失败: {:?}", img_result.err());
+        return None;
+    }
+    let img_data = img_result.ok()?;
+
     let width = img_data.width as u32;
     let height = img_data.height as u32;
+    eprintln!("[剪贴板] 从 arboard 读取到图片: {}x{}, RGBA数据 {} 字节",
+        width, height, img_data.bytes.len());
 
     // 检测尺寸：如果超大，直接返回原始 RGBA 数据让后续处理
-    let rgba = image::RgbaImage::from_raw(width, height, img_data.bytes.into_owned())?;
+    let rgba_result = image::RgbaImage::from_raw(width, height, img_data.bytes.into_owned());
+    if rgba_result.is_none() {
+        eprintln!("[剪贴板] RgbaImage::from_raw 失败，可能内存不足");
+        return None;
+    }
+    let rgba = rgba_result?;
     let img = DynamicImage::ImageRgba8(rgba);
 
     let mut png_buf = Vec::new();
-    img.write_to(&mut std::io::Cursor::new(&mut png_buf), ImageFormat::Png).ok()?;
+    let write_result = img.write_to(&mut std::io::Cursor::new(&mut png_buf), ImageFormat::Png);
+    if write_result.is_err() {
+        eprintln!("[剪贴板] PNG 编码失败: {:?}", write_result.err());
+        return None;
+    }
+
+    eprintln!("[剪贴板] PNG 编码成功，数据大小: {} 字节", png_buf.len());
 
     Some(ClipboardImageData {
         width,

@@ -255,6 +255,7 @@ const contextMenuOptions = computed(() => {
 const showContextMenu = ref(false);
 const contextMenuX = ref(0);
 const contextMenuY = ref(0);
+const contextMenuPlacement = ref<'bottom-start' | 'top-start'>('bottom-start');
 
 // 右键点击显示菜单
 function handleContextMenu(e: MouseEvent) {
@@ -266,25 +267,30 @@ function handleContextMenu(e: MouseEvent) {
 
   // 预估菜单宽度
   const estimatedMenuWidth = 220;
-  // 预估菜单高度（每个选项约 36px）
-  const estimatedMenuHeight = contextMenuOptions.value.length * 36;
+  // 预估菜单高度（每个选项约 36px，最大 400px）
+  const estimatedMenuHeight = Math.min(contextMenuOptions.value.length * 36, 400);
 
   // 计算调整后的位置
   let x = e.clientX;
   let y = e.clientY;
+
+  // 动态选择 placement：如果底部空间不足，向上显示
+  const bottomSpace = windowHeight - y;
+  contextMenuPlacement.value = bottomSpace < estimatedMenuHeight ? 'top-start' : 'bottom-start';
 
   // 如果菜单会超出右边界，向左偏移
   if (x + estimatedMenuWidth > windowWidth) {
     x = windowWidth - estimatedMenuWidth - 10;
   }
 
-  // 如果菜单会超出底部边界，向上显示
-  if (y + estimatedMenuHeight > windowHeight) {
-    y = y - estimatedMenuHeight;
-    // 如果向上也超出了顶部，则限制在顶部
-    if (y < 10) {
-      y = 10;
-    }
+  // 确保不超出左边界
+  if (x < 10) {
+    x = 10;
+  }
+
+  // 确保不超出顶部边界（向上显示时需要调整）
+  if (contextMenuPlacement.value === 'top-start' && y < estimatedMenuHeight) {
+    y = estimatedMenuHeight + 10;
   }
 
   contextMenuX.value = x;
@@ -585,7 +591,7 @@ function handleToggleStatus() {
 <template>
   <!-- 右键菜单 -->
   <NDropdown
-    placement="bottom-start"
+    :placement="contextMenuPlacement"
     trigger="manual"
     :x="contextMenuX"
     :y="contextMenuY"
