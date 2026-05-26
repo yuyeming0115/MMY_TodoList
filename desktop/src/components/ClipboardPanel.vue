@@ -4,11 +4,14 @@ import { NDropdown, NIcon, NInput, useMessage } from 'naive-ui';
 import { TrashOutline as DeleteIcon, CopyOutline as CopyIcon, CreateOutline as EditIcon } from '@vicons/ionicons5';
 import draggable from 'vuedraggable';
 import { useClipboardStore } from '../stores/clipboardStore';
+import { useImageCacheStore } from '../stores/imageCacheStore';
+import { startImageLoader, stopImageLoader } from '../utils/imageLoader';
 import { useI18n } from '../composables/useI18n';
 import ClipboardItemCard from './ClipboardItemCard.vue';
 import type { ClipboardItem } from '../types';
 
 const clipboardStore = useClipboardStore();
+const imageCacheStore = useImageCacheStore();
 const message = useMessage();
 const { t } = useI18n();
 
@@ -109,7 +112,7 @@ const offsetY = computed(() => {
   return itemPositions.value[startIndex.value] || 0;
 });
 
-// 滚动处理
+// 滚动处理：更新滚动位置 + 预加载可视区域图片
 function handleScroll(e: Event) {
   const target = e.target as HTMLElement;
   scrollTop.value = target.scrollTop;
@@ -119,6 +122,35 @@ function handleScroll(e: Event) {
   const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
   if (scrollBottom < threshold && clipboardStore.hasMore && !clipboardStore.loading) {
     clipboardStore.loadMore();
+  }
+
+  // 预加载可视区域的图片（学习 Ditto 的按需加载）
+  preloadVisibleImages();
+}
+
+// 预加载可视区域的图片
+function preloadVisibleImages() {
+  if (!useVirtualScroll.value) {
+    // 非虚拟滚动：预加载所有 filteredItems 中的图片
+    const items = filteredItems.value.slice(0, 50); // 限制前50条
+    for (const item of items) {
+      if (item.imagePath && imageCacheStore.needsLoad(item.id)) {
+        imageCacheStore.addToLoadQueue(item.id, item.imagePath);
+      }
+    }
+    return;
+  }
+
+  // 虚拟滚动：只预加载可视区域 + 缓冲区的图片
+  const visibleStart = startIndex.value;
+  const visibleEnd = endIndex.value;
+  const items = filteredItems.value;
+
+  for (let i = visibleStart; i <= visibleEnd && i < items.length; i++) {
+    const item = items[i];
+    if (item.imagePath && imageCacheStore.needsLoad(item.id)) {
+      imageCacheStore.addToLoadQueue(item.id, item.imagePath);
+    }
   }
 }
 
@@ -223,10 +255,14 @@ function handleKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown);
+  // 启动后台图片加载服务
+  startImageLoader();
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  // 停止后台图片加载服务
+  stopImageLoader();
 });
 
 // 移动分类
@@ -328,11 +364,16 @@ watch(filteredItems, (val) => {
   dragList.value = [...val];
 }, { immediate: true });
 
-// 监听分类变化，立即预热新的 filteredItems（消除切换分类的首次卡顿）
+// 监听分类变化，立即预热新的 filteredItems + 预加载图片
 watch(() => clipboardStore.selectedCategoryId, () => {
   // 立即触发 computed 计算，不等用户操作
   void filteredItems.value;
   void filteredItemIds.value;
+
+  // 预加载新分类的图片（延迟执行，避免阻塞 computed）
+  setTimeout(() => {
+    preloadVisibleImages();
+  }, 100);
 }, { immediate: true });
 
 // 拖拽事件

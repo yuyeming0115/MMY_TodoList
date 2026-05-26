@@ -9,6 +9,7 @@ import {
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
+import { useImageCacheStore } from '../stores/imageCacheStore';
 import { useI18n } from '../composables/useI18n';
 import { BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 
@@ -37,6 +38,7 @@ const emit = defineEmits<{
 
 const message = useMessage();
 const clipboardStore = useClipboardStore();
+const imageCacheStore = useImageCacheStore();
 const { t } = useI18n();
 const showContextMenu = ref(false);
 const contextMenuX = ref(0);
@@ -48,12 +50,42 @@ const dragHandleRef = ref<HTMLElement | null>(null);
 const shouldLoadImage = ref(false);
 const imageSrc = ref<string>('');
 
+// 使用两级缓存加载图片（学习 Ditto 架构）
+function loadImageWithCache() {
+  // 1. 先检查缓存
+  const cached = imageCacheStore.getCachedImage(props.item.id);
+  if (cached) {
+    imageSrc.value = cached;
+    return;
+  }
+
+  // 2. 缓存不存在，检查是否有图片路径需要加载
+  if (props.item.imagePath && imageCacheStore.needsLoad(props.item.id)) {
+    // 加入异步加载队列，不阻塞渲染
+    imageCacheStore.addToLoadQueue(props.item.id, props.item.imagePath);
+  }
+
+  // 3. 如果有 imageBase64 备用，直接使用
+  if (props.item.imageBase64) {
+    imageSrc.value = props.item.imageBase64;
+    // 同时缓存
+    imageCacheStore.cacheImage(props.item.id, props.item.imageBase64);
+  }
+}
+
 watch(() => props.isVisible, (visible) => {
   if (visible && (props.item.imagePath || props.item.imageBase64) && !shouldLoadImage.value) {
     shouldLoadImage.value = true;
-    imageSrc.value = props.item.thumbnailBase64 || props.item.imageBase64 || '';
+    loadImageWithCache();
   }
 }, { immediate: true });
+
+// 监听缓存更新：当后台加载完成后，更新显示
+watch(() => imageCacheStore.getCachedImage(props.item.id), (cached) => {
+  if (cached && shouldLoadImage.value && !imageSrc.value) {
+    imageSrc.value = cached;
+  }
+});
 
 // 用原生 mousedown 拦截 Sortable.js 的事件捕获，让它无法调用 preventDefault() 阻断原生拖拽
 function blockSortableMousedown(e: Event) {

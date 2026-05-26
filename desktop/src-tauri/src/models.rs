@@ -146,7 +146,7 @@ pub struct ClipboardItem {
     pub content: String,
     pub image_base64: Option<String>,
     pub image_path: Option<String>,
-    pub thumbnail_base64: Option<String>,
+    // thumbnail_base64 已移除：学习 Ditto，数据库只存路径，缩略图从文件动态生成
     pub priority: i32,
     pub sort_order: i32,
     pub created_at: i64,

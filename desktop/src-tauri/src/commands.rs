@@ -223,7 +223,7 @@ pub struct NewClipboardItem {
     pub content: String,
     pub image_base64: Option<String>,
     pub image_path: Option<String>,
-    pub thumbnail_base64: Option<String>,
+    // thumbnail_base64 已移除：学习 Ditto，数据库只存路径
     pub priority: i32,
     pub sort_order: i32,
     pub expires_at: Option<i64>,
@@ -239,7 +239,6 @@ pub fn add_clipboard_item(db: State<'_, Arc<Database>>, item: NewClipboardItem) 
         content: item.content,
         image_base64: item.image_base64,
         image_path: item.image_path,
-        thumbnail_base64: item.thumbnail_base64,
         priority: item.priority,
         sort_order: item.sort_order,
         created_at: now,

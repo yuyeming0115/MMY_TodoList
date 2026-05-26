@@ -73,7 +73,7 @@ export interface ClipboardItem {
   content: string;
   imageBase64?: string;
   imagePath?: string;
-  thumbnailBase64?: string;
+  // thumbnailBase64 已移除：学习 Ditto，数据库只存路径，缩略图从文件动态生成
   priority: 1 | 2 | 3;
   sortOrder: number;
   createdAt: number;

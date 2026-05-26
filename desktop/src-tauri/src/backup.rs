@@ -304,10 +304,9 @@ impl BackupManager {
             let mut item = item.clone();
             // 如果有 base64 数据，重新保存图片文件
             if item.image_base64.is_some() {
-                let result = self.db.save_clipboard_image(&item.id, &item.image_base64.clone().unwrap());
-                if let Ok((path, thumb)) = result {
+                let result = self.db.save_clipboard_image_file(&item.id, &item.image_base64.clone().unwrap());
+                if let Ok(path) = result {
                     item.image_path = Some(path);
-                    item.thumbnail_base64 = Some(thumb);
                 }
             }
             self.db.add_clipboard_item(&item).ok();
