@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {
   NForm, NFormItem, NSelect, NSwitch, NSpace,
-  NButton, NDivider, NIcon, NText, NSlider, NPopconfirm
+  NButton, NDivider, NIcon, NText, NSlider, NPopconfirm, NModal, NCheckbox
 } from 'naive-ui';
 import {
   DownloadOutline as ExportIcon, CloudUploadOutline as ImportIcon,
@@ -12,10 +12,10 @@ import {
 import { useSettingsStore } from '../stores/settingsStore';
 import { useI18n } from '../composables/useI18n';
 import { useMessage } from 'naive-ui';
-import { exportData, importData, getBackupSettings, updateBackupSettings, createBackupWithType, listBackups, restoreBackup, deleteBackup, updateGlobalShortcut } from '../utils/db';
+import { exportData, importData, getBackupSettings, updateBackupSettings, createBackupWithType, listBackups, restoreBackup, deleteBackup, previewBackup, restoreBackupWithOptions, updateGlobalShortcut } from '../utils/db';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
-import type { ExportData, BackupSettings, BackupInfo } from '../types';
+import type { ExportData, BackupSettings, BackupInfo, BackupPreview, RestoreOptions } from '../types';
 import { ref, onMounted, computed } from 'vue';
 
 const emit = defineEmits<{
@@ -96,8 +96,50 @@ async function handleBackupFull() {
   }
 }
 
-// 恢复备份
-async function handleRestore(filename: string) {
+// 恢复预览弹窗
+const showRestoreModal = ref(false);
+const restorePreview = ref<BackupPreview | null>(null);
+const restoreOptions = ref<RestoreOptions>({
+  overwrite: true,
+  restoreTasks: true,
+  restoreClipboard: true,
+  restoreSettings: true,
+});
+const restoringFilename = ref('');
+
+// 打开恢复预览弹窗
+async function openRestorePreview(filename: string) {
+  restoringFilename.value = filename;
+  try {
+    restorePreview.value = await previewBackup(filename);
+    restoreOptions.value = {
+      overwrite: true,
+      restoreTasks: true,
+      restoreClipboard: true,
+      restoreSettings: true,
+    };
+    showRestoreModal.value = true;
+  } catch (e) {
+    message.error(t('messages.previewFailed'));
+    console.error(e);
+  }
+}
+
+// 执行选择性恢复
+async function doRestoreWithOptions() {
+  try {
+    await restoreBackupWithOptions(restoringFilename.value, restoreOptions.value);
+    message.success(t('messages.restoreSuccess'));
+    showRestoreModal.value = false;
+    setTimeout(() => window.location.reload(), 1000);
+  } catch (e) {
+    message.error(t('messages.restoreFailed'));
+    console.error(e);
+  }
+}
+
+// 快速恢复（覆盖所有）
+async function quickRestore(filename: string) {
   try {
     await restoreBackup(filename);
     message.success(t('messages.restoreSuccess'));
@@ -456,14 +498,12 @@ function goBack() {
               <span class="backup-size">{{ formatFileSize(backup.sizeBytes) }}</span>
             </div>
             <div class="backup-actions">
-              <NPopconfirm @positive-click="handleRestore(backup.filename)">
-                <template #trigger>
-                  <button class="backup-btn restore" :title="t('settings.restore')">
-                    <NIcon :component="RestoreIcon" size="14" />
-                  </button>
-                </template>
-                {{ t('settings.restoreConfirm') }}
-              </NPopconfirm>
+              <button class="backup-btn restore" :title="t('settings.restore')" @click="openRestorePreview(backup.filename)">
+                <NIcon :component="RestoreIcon" size="14" />
+              </button>
+              <button class="backup-btn quick-restore" :title="t('settings.quickRestore')" @click="quickRestore(backup.filename)">
+                <NIcon :component="RestoreIcon" size="14" />
+              </button>
               <NPopconfirm @positive-click="handleDeleteBackup(backup.filename)">
                 <template #trigger>
                   <button class="backup-btn delete" :title="t('settings.deleteBackup')">
@@ -600,6 +640,96 @@ function goBack() {
         </NText>
       </div>
     </div>
+
+    <!-- 恢复预览弹窗 -->
+    <NModal v-model:show="showRestoreModal" preset="card" :title="t('settings.restorePreview')" style="width: 400px">
+      <div v-if="restorePreview" class="restore-preview-content">
+        <!-- 备份基本信息 -->
+        <div class="preview-section">
+          <NText depth="2" style="font-weight: 500">{{ t('settings.backupInfo') }}</NText>
+          <div class="preview-stats">
+            <div class="stat-item">
+              <span class="stat-label">{{ t('settings.backupTime') }}</span>
+              <span class="stat-value">{{ formatBackupTime(restorePreview.createdAt) }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">{{ t('settings.backupType') }}</span>
+              <span class="stat-value">{{ formatBackupType(restorePreview.backupType) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 数据统计 -->
+        <div class="preview-section">
+          <NText depth="2" style="font-weight: 500">{{ t('settings.dataStats') }}</NText>
+          <div class="preview-stats">
+            <div class="stat-item">
+              <span class="stat-label">{{ t('settings.categoriesCount') }}</span>
+              <span class="stat-value">{{ restorePreview.categoriesCount }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">{{ t('settings.tasksCount') }}</span>
+              <span class="stat-value">{{ restorePreview.tasksCount }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">{{ t('settings.clipboardItemsCount') }}</span>
+              <span class="stat-value">{{ restorePreview.clipboardItemsCount }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">{{ t('settings.clipboardImageCount') }}</span>
+              <span class="stat-value">{{ restorePreview.clipboardImageCount }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 恢复选项 -->
+        <div class="preview-section">
+          <NText depth="2" style="font-weight: 500">{{ t('settings.restoreOptions') }}</NText>
+
+          <div class="option-row">
+            <NSwitch
+              :value="restoreOptions.overwrite"
+              @update:value="(v: boolean) => { restoreOptions.overwrite = v; }"
+            />
+            <span class="option-label">{{ restoreOptions.overwrite ? t('settings.overwriteMode') : t('settings.mergeMode') }}</span>
+          </div>
+
+          <div class="option-row">
+            <NCheckbox
+              :checked="restoreOptions.restoreTasks"
+              @update:checked="(v: boolean) => { restoreOptions.restoreTasks = v; }"
+            />
+            <span class="option-label">{{ t('settings.restoreTasks') }}</span>
+          </div>
+
+          <div class="option-row">
+            <NCheckbox
+              :checked="restoreOptions.restoreClipboard"
+              @update:checked="(v: boolean) => { restoreOptions.restoreClipboard = v; }"
+            />
+            <span class="option-label">{{ t('settings.restoreClipboard') }}</span>
+          </div>
+
+          <div class="option-row">
+            <NCheckbox
+              :checked="restoreOptions.restoreSettings"
+              @update:checked="(v: boolean) => { restoreOptions.restoreSettings = v; }"
+            />
+            <span class="option-label">{{ t('settings.restoreSettings') }}</span>
+          </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="restore-actions">
+          <NButton type="primary" @click="doRestoreWithOptions">
+            {{ t('settings.confirmRestore') }}
+          </NButton>
+          <NButton @click="showRestoreModal = false">
+            {{ t('messages.cancel') }}
+          </NButton>
+        </div>
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -1116,5 +1246,91 @@ html.dark .shortcut-display {
 
 html.dark .placeholder {
   color: #666;
+}
+
+/* 恢复预览弹窗样式 */
+.restore-preview-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #888;
+}
+
+html.dark .stat-label {
+  color: #999;
+}
+
+.stat-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+html.dark .stat-value {
+  color: #e0e0e0;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.option-label {
+  font-size: 14px;
+  color: #333;
+}
+
+html.dark .option-label {
+  color: #e0e0e0;
+}
+
+.restore-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* 快速恢复按钮样式 */
+.backup-btn.quick-restore {
+  background: #e8f5e9;
+  color: #28C840;
+}
+
+html.dark .backup-btn.quick-restore {
+  background: rgba(40, 200, 64, 0.15);
+  color: rgba(40, 200, 64, 0.8);
+}
+
+.backup-btn.quick-restore:hover {
+  background: #c8e6c9;
+}
+
+html.dark .backup-btn.quick-restore:hover {
+  background: rgba(40, 200, 64, 0.25);
 }
 </style>

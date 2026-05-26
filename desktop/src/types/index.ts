@@ -121,3 +121,24 @@ export interface BackupInfo {
   sizeBytes: number;
   backupType: BackupType; // 备份类型（从文件名推断）
 }
+
+// 备份预览信息
+export interface BackupPreview {
+  filename: string;
+  createdAt: number;
+  backupType: BackupType;
+  categoriesCount: number;
+  tasksCount: number;
+  clipboardCategoriesCount: number;
+  clipboardItemsCount: number;
+  clipboardImageCount: number;
+  hasSettings: boolean;
+}
+
+// 恢复选项
+export interface RestoreOptions {
+  overwrite: boolean; // 是否覆盖现有数据
+  restoreTasks: boolean;
+  restoreClipboard: boolean;
+  restoreSettings: boolean;
+}

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem, BackupSettings, BackupInfo, BackupType } from '../types';
+import type { Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem, BackupSettings, BackupInfo, BackupType, BackupPreview, RestoreOptions } from '../types';
 
 // 分类操作
 export async function getCategories(): Promise<Category[]> {
@@ -161,6 +161,16 @@ export async function restoreBackup(filename: string): Promise<void> {
 
 export async function deleteBackup(filename: string): Promise<void> {
   return invoke('delete_backup', { filename });
+}
+
+/// 预览备份内容
+export async function previewBackup(filename: string): Promise<BackupPreview> {
+  return invoke('preview_backup', { filename });
+}
+
+/// 选择性恢复备份
+export async function restoreBackupWithOptions(filename: string, options: RestoreOptions): Promise<void> {
+  return invoke('restore_backup_with_options', { filename, options });
 }
 
 // 更新全局快捷键设置

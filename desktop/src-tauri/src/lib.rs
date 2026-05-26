@@ -189,6 +189,8 @@ pub fn run() {
             commands::list_backups,
             commands::restore_backup,
             commands::delete_backup,
+            commands::preview_backup,
+            commands::restore_backup_with_options,
             // 系统托盘
             hide_to_tray,
             // 工具命令

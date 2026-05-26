@@ -1,6 +1,6 @@
 use crate::database::Database;
 use crate::models::{Category, Task, AppSettings, ExportData, ClipboardCategory, ClipboardItem};
-use crate::backup::{BackupManager, BackupSettings, BackupInfo};
+use crate::backup::{BackupManager, BackupSettings, BackupInfo, BackupPreview, RestoreOptions};
 use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -503,6 +503,22 @@ pub fn restore_backup(backup_mgr: State<'_, Arc<BackupManager>>, filename: Strin
 #[tauri::command]
 pub fn delete_backup(backup_mgr: State<'_, Arc<BackupManager>>, filename: String) -> Result<(), String> {
     backup_mgr.delete_backup(&filename).map_err(|e| e.to_string())
+}
+
+/// 预览备份内容
+#[tauri::command]
+pub fn preview_backup(backup_mgr: State<'_, Arc<BackupManager>>, filename: String) -> Result<BackupPreview, String> {
+    backup_mgr.preview_backup(&filename).map_err(|e| e.to_string())
+}
+
+/// 选择性恢复备份（支持覆盖/合并选项）
+#[tauri::command]
+pub fn restore_backup_with_options(
+    backup_mgr: State<'_, Arc<BackupManager>>,
+    filename: String,
+    options: RestoreOptions,
+) -> Result<(), String> {
+    backup_mgr.restore_backup_with_options(&filename, &options).map_err(|e| e.to_string())
 }
 
 /// 更新全局快捷键设置并动态注册

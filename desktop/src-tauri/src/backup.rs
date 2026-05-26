@@ -63,6 +63,46 @@ pub struct BackupInfo {
     pub backup_type: BackupType,
 }
 
+/// 备份预览信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupPreview {
+    pub filename: String,
+    pub created_at: i64,
+    pub backup_type: BackupType,
+    pub categories_count: usize,
+    pub tasks_count: usize,
+    pub clipboard_categories_count: usize,
+    pub clipboard_items_count: usize,
+    pub clipboard_image_count: usize, // 包含图片的项目数
+    pub has_settings: bool,
+}
+
+/// 恢复选项
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreOptions {
+    /// 是否覆盖现有数据（true = 清空后恢复，false = 合并）
+    pub overwrite: bool,
+    /// 是否恢复任务数据
+    pub restore_tasks: bool,
+    /// 是否恢复剪贴板数据
+    pub restore_clipboard: bool,
+    /// 是否恢复设置
+    pub restore_settings: bool,
+}
+
+impl Default for RestoreOptions {
+    fn default() -> Self {
+        Self {
+            overwrite: true,
+            restore_tasks: true,
+            restore_clipboard: true,
+            restore_settings: true,
+        }
+    }
+}
+
 /// 备份管理器
 pub struct BackupManager {
     settings: Mutex<BackupSettings>,
@@ -387,6 +427,98 @@ impl BackupManager {
         if backup_path.exists() {
             fs::remove_file(&backup_path)?;
         }
+        Ok(())
+    }
+
+    /// 预览备份内容（不执行恢复）
+    pub fn preview_backup(&self, filename: &str) -> io::Result<BackupPreview> {
+        let backup_path = self.backup_dir.join(filename);
+        if !backup_path.exists() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "备份文件不存在"));
+        }
+
+        let content = fs::read_to_string(&backup_path)?;
+        let data: ExportData = serde_json::from_str(&content)?;
+
+        // 解析备份时间
+        let (created_at, backup_type) = Self::parse_backup_time(filename)
+            .unwrap_or((0, BackupType::Full));
+
+        // 统计包含图片的剪贴板项目数
+        let clipboard_image_count = data.clipboard_items
+            .iter()
+            .filter(|item| item.image_base64.is_some() || item.image_path.is_some())
+            .count();
+
+        Ok(BackupPreview {
+            filename: filename.to_string(),
+            created_at,
+            backup_type,
+            categories_count: data.categories.len(),
+            tasks_count: data.tasks.len(),
+            clipboard_categories_count: data.clipboard_categories.len(),
+            clipboard_items_count: data.clipboard_items.len(),
+            clipboard_image_count,
+            has_settings: data.settings.window_width.is_some(),
+        })
+    }
+
+    /// 选择性恢复备份（支持覆盖/合并选项）
+    pub fn restore_backup_with_options(&self, filename: &str, options: &RestoreOptions) -> io::Result<()> {
+        let backup_path = self.backup_dir.join(filename);
+        if !backup_path.exists() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "备份文件不存在"));
+        }
+
+        let content = fs::read_to_string(&backup_path)?;
+        let data: ExportData = serde_json::from_str(&content)?;
+
+        // 如果选择覆盖，先清空相关数据
+        if options.overwrite {
+            let conn = self.db.conn.lock().unwrap();
+            if options.restore_tasks {
+                conn.execute("DELETE FROM categories", []).ok();
+                conn.execute("DELETE FROM tasks", []).ok();
+            }
+            if options.restore_clipboard {
+                conn.execute("DELETE FROM clipboard_categories", []).ok();
+                conn.execute("DELETE FROM clipboard_items", []).ok();
+            }
+        }
+
+        // 恢复任务数据
+        if options.restore_tasks {
+            for category in &data.categories {
+                self.db.import_category(category).ok();
+            }
+            for task in &data.tasks {
+                self.db.import_task(task).ok();
+            }
+        }
+
+        // 恢复剪贴板数据
+        if options.restore_clipboard {
+            for category in &data.clipboard_categories {
+                self.db.import_clipboard_category(category).ok();
+            }
+            for item in &data.clipboard_items {
+                let mut item = item.clone();
+                // 如果有 base64 数据，重新保存图片文件
+                if item.image_base64.is_some() {
+                    let result = self.db.save_clipboard_image_file(&item.id, &item.image_base64.clone().unwrap());
+                    if let Ok(path) = result {
+                        item.image_path = Some(path);
+                    }
+                }
+                self.db.add_clipboard_item(&item).ok();
+            }
+        }
+
+        // 恢复设置
+        if options.restore_settings {
+            self.db.update_settings(&data.settings).ok();
+        }
+
         Ok(())
     }
 
