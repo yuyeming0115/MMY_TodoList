@@ -2,9 +2,10 @@
 import { NIcon, NDropdown, NInput, useMessage } from 'naive-ui';
 import { h, ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import {
-  TrashOutline as DeleteIcon, CopyOutline as CopyIcon,
+  TrashOutline as DeleteIcon,
   CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
   ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon, LockClosedOutline as LockIcon,
+  LockOpenOutline as UnlockIcon,
   ArrowUpOutline as TopIcon,
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
@@ -162,16 +163,7 @@ const categoryOptions = computed(() => {
 });
 
 const contextMenuOptions = computed(() => {
-  const options: any[] = [
-    { label: t('contextMenu.copy'), key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
-    { label: isLocked.value ? t('contextMenu.unlock') : t('contextMenu.lock'), key: 'lock', icon: () => h(NIcon, { component: LockIcon, size: 16, style: { color: isLocked.value ? '#E05252' : '#333' } }) },
-    { label: t('contextMenu.moveToTop'), key: 'moveToTop', icon: () => h(NIcon, { component: TopIcon, size: 16 }) },
-  ];
-
-  // 只有文本类型才显示编辑
-  if (isTextItem.value) {
-    options.push({ label: t('contextMenu.edit'), key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 16 }) });
-  }
+  const options: any[] = [];
 
   // 图片类型且有本地路径，显示"打开图片所在文件夹"
   if (props.item.imagePath) {
@@ -180,16 +172,13 @@ const contextMenuOptions = computed(() => {
 
   // 移动到分类（直接显示分类列表）
   if (categoryOptions.value.length > 0) {
-    options.push({ type: 'divider', key: 'd2' });
+    if (options.length > 0) options.push({ type: 'divider', key: 'd2' });
     options.push(...categoryOptions.value);
   }
 
-  options.push({ type: 'divider', key: 'd1' });
-  options.push({ label: t('contextMenu.enterSelectMode'), key: 'enter_select', icon: () => h(NIcon, { component: SelectIcon, size: 16 }) });
-  options.push({ label: t('contextMenu.delete'), key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
-  options.push({ type: 'divider', key: 'd3' });
   // 选择模式下显示"清空所有未锁定项"
   if (props.showCheckbox) {
+    if (options.length > 0) options.push({ type: 'divider', key: 'd3' });
     options.push({ label: t('contextMenu.clearAllUnlocked'), key: 'clear_all_unlocked', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
   }
   return options;
@@ -316,31 +305,7 @@ async function handleMenuSelect(key: string) {
     message.success(t('messages.clearAllUnlockedDone', { count }));
     return;
   }
-  if (key === 'copy') copyContent();
-  if (key === 'lock') {
-    // 选择模式下批量锁定
-    if (props.showCheckbox) {
-      emit('batch-lock');
-    } else {
-      const result = await clipboardStore.toggleItemLock(props.item);
-      message.success(result === 'locked' ? t('messages.locked') : t('messages.unlocked'));
-    }
-  }
-  if (key === 'moveToTop') {
-    emit('move-to-top', props.item);
-    message.success(t('messages.moved'));
-  }
-  if (key === 'edit') startEdit();
   if (key === 'openFolder') openImageFolder();
-  if (key === 'delete') {
-    // 选择模式下批量删除
-    if (props.showCheckbox) {
-      emit('batch-delete');
-    } else {
-      emit('delete', props.item.id);
-    }
-  }
-  if (key === 'enter_select') emit('enter-select-mode');
   if (key.startsWith('move_')) {
     const catId = key.slice(5);
     // 选择模式下批量移动
@@ -350,6 +315,42 @@ async function handleMenuSelect(key: string) {
       emit('move-to-category', props.item, catId);
       message.success(t('messages.moved'));
     }
+  }
+}
+
+// 微缩按钮操作
+async function handleToggleLock(e: MouseEvent) {
+  e.stopPropagation();
+  if (props.showCheckbox) {
+    emit('batch-lock');
+  } else {
+    const result = await clipboardStore.toggleItemLock(props.item);
+    message.success(result === 'locked' ? t('messages.locked') : t('messages.unlocked'));
+  }
+}
+
+function handleMoveToTop(e: MouseEvent) {
+  e.stopPropagation();
+  emit('move-to-top', props.item);
+  message.success(t('messages.moved'));
+}
+
+function handleStartEdit(e: MouseEvent) {
+  e.stopPropagation();
+  startEdit();
+}
+
+function handleEnterSelectMode(e: MouseEvent) {
+  e.stopPropagation();
+  emit('enter-select-mode');
+}
+
+function handleDelete(e: MouseEvent) {
+  e.stopPropagation();
+  if (props.showCheckbox) {
+    emit('batch-delete');
+  } else {
+    emit('delete', props.item.id);
   }
 }
 
@@ -464,6 +465,26 @@ async function handleCrossAppDragEnd(e: DragEvent) {
       <input type="checkbox" :checked="props.selected" />
       <span class="checkmark"></span>
     </label>
+
+    <!-- 微缩按钮区域 - 精简模式下不渲染 -->
+    <div v-if="!props.compact" class="action-buttons">
+      <button class="action-btn" :class="{ active: isLocked }" :title="isLocked ? t('contextMenu.unlock') : t('contextMenu.lock')" @click="handleToggleLock">
+        <NIcon :component="isLocked ? LockIcon : UnlockIcon" size="14" />
+      </button>
+      <button class="action-btn" :title="t('contextMenu.moveToTop')" @click="handleMoveToTop">
+        <NIcon :component="TopIcon" size="14" />
+      </button>
+      <button v-if="isTextItem" class="action-btn" :title="t('contextMenu.edit')" @click="handleStartEdit">
+        <NIcon :component="EditIcon" size="14" />
+      </button>
+      <button class="action-btn" :title="t('contextMenu.enterSelectMode')" @click="handleEnterSelectMode">
+        <NIcon :component="SelectIcon" size="14" />
+      </button>
+      <button class="action-btn delete" :title="t('contextMenu.delete')" @click="handleDelete">
+        <NIcon :component="DeleteIcon" size="14" />
+      </button>
+    </div>
+
     <!-- 跨应用拖拽手柄 - 精简模式下不渲染 -->
     <div
       v-if="!props.compact"
@@ -517,9 +538,6 @@ async function handleCrossAppDragEnd(e: DragEvent) {
         </template>
       </div>
     </div>
-
-    <!-- 锁定角标 - 精简模式下不渲染 -->
-    <div v-if="isLocked && !props.compact" class="locked-badge">🔒</div>
 
     <!-- 过期时间提示 - 精简模式下不渲染 -->
     <div v-if="expiryLabel && !props.compact" class="expiry-badge" :class="{ warning: isExpiringSoon }">
@@ -875,17 +893,69 @@ html.dark .task-card.selected {
   background: rgba(74, 144, 217, 0.1);
 }
 
-/* 跨应用拖拽手柄 - 右侧中间 */
-.cross-app-drag-handle {
+/* 微缩按钮区域 - 顶部右侧 */
+.action-buttons {
   position: absolute;
-  top: 50%;
+  top: 4px;
   right: 8px;
-  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+
+.task-card:hover .action-buttons {
+  opacity: 1;
+}
+
+.action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.action-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #333;
+}
+
+html.dark .action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+}
+
+.action-btn.active {
+  color: #4A90D9;
+}
+
+.action-btn.delete {
+  color: #E05252;
+}
+
+.action-btn.delete:hover {
+  background: rgba(224, 82, 82, 0.1);
+}
+
+/* 跨应用拖拽手柄 - 底部右侧（避免和微缩按钮冲突） */
+.cross-app-drag-handle {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   cursor: grab;
   opacity: 0;
@@ -914,16 +984,5 @@ html.dark .cross-app-drag-handle:hover {
   opacity: 1;
   background: rgba(74, 144, 217, 0.2);
   color: #4A90D9;
-}
-
-/* 锁定角标 */
-.locked-badge {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  font-size: 14px;
-  z-index: 6;
-  pointer-events: none;
 }
 </style>
