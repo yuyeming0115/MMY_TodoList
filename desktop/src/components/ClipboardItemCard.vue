@@ -2,16 +2,16 @@
 import { NIcon, NDropdown, NInput, useMessage } from 'naive-ui';
 import { h, ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import {
-  TrashOutline as DeleteIcon, CopyOutline as CopyIcon,
+  TrashOutline as DeleteIcon,
   CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
-  ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon, LockClosedOutline as LockIcon,
+  ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon,
+  LockOpenOutline as UnlockIcon,
   ArrowUpOutline as TopIcon,
 } from '@vicons/ionicons5';
 import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
 import { useImageCacheStore } from '../stores/imageCacheStore';
 import { useI18n } from '../composables/useI18n';
-import { BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 
 const props = defineProps<{
   item: ClipboardItem;
@@ -29,6 +29,7 @@ const emit = defineEmits<{
   (e: 'contextmenu', event: MouseEvent, item: ClipboardItem): void;
   (e: 'toggle-select', id: string, shift: boolean): void;
   (e: 'enter-select-mode'): void;
+  (e: 'toggle-select-mode'): void;
   (e: 'move-to-category', item: ClipboardItem, categoryId: string): void;
   (e: 'batch-move-to-category', categoryId: string): void;
   (e: 'batch-lock'): void;
@@ -104,9 +105,22 @@ onUnmounted(() => {
 
 const isLocked = computed(() => clipboardStore.isItemLocked(props.item));
 const isTextItem = computed(() => !props.item.imageBase64 && !props.item.imagePath);
-const isBuiltinCategory = computed(() =>
-  ([BUILTIN_CLIPBOARD_CATEGORIES.TEXT, BUILTIN_CLIPBOARD_CATEGORIES.IMAGE] as string[]).includes(props.item.categoryId)
-);
+
+// 锁定类型判断：区分卡片级别锁定和分类级别锁定
+const isCardLevelLocked = computed(() => props.item.locked === true);
+const isCategoryLevelLocked = computed(() => clipboardStore.isItemInLockedCategory(props.item));
+// 获取锁定分类的名称（用于显示）
+const lockedCategoryName = computed(() => {
+  if (!isCategoryLevelLocked.value) return null;
+  const category = clipboardStore.categories.find(c => c.id === props.item.categoryId);
+  return category?.name || null;
+});
+// 锁定提示文字：卡片级别只显示锁头，分类级别显示"锁头+分类名"
+const lockedLabel = computed(() => {
+  if (!isLocked.value) return null;
+  if (isCardLevelLocked.value) return null; // 卡片级别锁定，不显示额外文字
+  return lockedCategoryName.value; // 分类级别锁定，显示分类名
+});
 
 // 过期时间相关
 const expiryLabel = computed(() => {
@@ -166,65 +180,22 @@ const categoryOptions = computed(() => {
 });
 
 const contextMenuOptions = computed(() => {
-  const options: any[] = [
-    { label: t('contextMenu.copy'), key: 'copy', icon: () => h(NIcon, { component: CopyIcon, size: 16 }) },
-    { label: isLocked.value ? t('contextMenu.unlock') : t('contextMenu.lock'), key: 'lock', icon: () => h(NIcon, { component: LockIcon, size: 16, style: { color: isLocked.value ? '#E05252' : '#333' } }) },
-    { label: t('contextMenu.moveToTop'), key: 'moveToTop', icon: () => h(NIcon, { component: TopIcon, size: 16 }) },
-  ];
-
-  // 只有文本类型才显示编辑
-  if (isTextItem.value) {
-    options.push({ label: t('contextMenu.edit'), key: 'edit', icon: () => h(NIcon, { component: EditIcon, size: 16 }) });
-  }
+  const options: any[] = [];
 
   // 图片类型且有本地路径，显示"打开图片所在文件夹"
   if (props.item.imagePath) {
     options.push({ label: t('contextMenu.openFolder'), key: 'openFolder', icon: () => h(NIcon, { component: FolderOpenIcon, size: 16 }) });
   }
 
-  // 内置分类（文本/图像）显示设置过期时间 - 图片只保留1小时选项
-  if (isBuiltinCategory.value) {
-    // 如果是图片类型，只显示1小时过期
-    if (props.item.imagePath || props.item.imageBase64) {
-      options.push({
-        key: 'expiry',
-        label: t('contextMenu.setExpiry'),
-        icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
-        children: [
-          { label: t('expiry.hour1'), key: 'expiry_1h' },
-          { label: t('expiry.never'), key: 'expiry_never' },
-        ],
-      });
-    } else {
-      // 文本类型保留所有选项
-      options.push({
-        key: 'expiry',
-        label: t('contextMenu.setExpiry'),
-        icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
-        children: [
-          { label: t('expiry.hour1'), key: 'expiry_1h' },
-          { label: t('expiry.day1'), key: 'expiry_1d' },
-          { label: t('expiry.days7'), key: 'expiry_7d' },
-          { label: t('expiry.days30'), key: 'expiry_30d' },
-          { label: t('expiry.never'), key: 'expiry_never' },
-        ],
-      });
-    }
-  }
-
   // 移动到分类（直接显示分类列表）
   if (categoryOptions.value.length > 0) {
-    options.push({ type: 'divider', key: 'd2' });
+    if (options.length > 0) options.push({ type: 'divider', key: 'd2' });
     options.push(...categoryOptions.value);
   }
 
-  options.push({ type: 'divider', key: 'd1' });
-  options.push({ label: t('contextMenu.enterSelectMode'), key: 'enter_select', icon: () => h(NIcon, { component: SelectIcon, size: 16 }) });
-  options.push({ label: t('contextMenu.delete'), key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
-  options.push({ type: 'divider', key: 'd3' });
-  options.push({ label: t('contextMenu.cleanupExpired'), key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 16, style: { color: '#E05252' } }) });
   // 选择模式下显示"清空所有未锁定项"
   if (props.showCheckbox) {
+    if (options.length > 0) options.push({ type: 'divider', key: 'd3' });
     options.push({ label: t('contextMenu.clearAllUnlocked'), key: 'clear_all_unlocked', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
   }
   return options;
@@ -344,62 +315,14 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
 });
 
-function setExpiry(key: string) {
-  const now = Date.now();
-  let expiresAt: number | null = null;
-  let labelKey = '';
-  switch (key) {
-    case 'expiry_1h': expiresAt = now + 1 * 60 * 60 * 1000; labelKey = 'expiry.hour1'; break;
-    case 'expiry_1d': expiresAt = now + 1 * 24 * 60 * 60 * 1000; labelKey = 'expiry.day1'; break;
-    case 'expiry_7d': expiresAt = now + 7 * 24 * 60 * 60 * 1000; labelKey = 'expiry.days7'; break;
-    case 'expiry_30d': expiresAt = now + 30 * 24 * 60 * 60 * 1000; labelKey = 'expiry.days30'; break;
-    case 'expiry_never': expiresAt = null; labelKey = 'expiry.never'; break;
-  }
-  clipboardStore.setItemExpiry(props.item.id, expiresAt);
-  message.success(t('messages.expirySet', { label: t(labelKey) }));
-}
-
 async function handleMenuSelect(key: string) {
   showContextMenu.value = false;
-  if (key === 'cleanup') {
-    const count = await clipboardStore.cleanupExpiredItems();
-    if (count > 0) {
-      message.success(t('messages.cleanupDone', { count }));
-    } else {
-      message.info(t('messages.noExpiredItems'));
-    }
-    return;
-  }
   if (key === 'clear_all_unlocked') {
     const count = await clipboardStore.clearAllUnlocked();
     message.success(t('messages.clearAllUnlockedDone', { count }));
     return;
   }
-  if (key === 'copy') copyContent();
-  if (key === 'lock') {
-    // 选择模式下批量锁定
-    if (props.showCheckbox) {
-      emit('batch-lock');
-    } else {
-      const result = await clipboardStore.toggleItemLock(props.item);
-      message.success(result === 'locked' ? t('messages.locked') : t('messages.unlocked'));
-    }
-  }
-  if (key === 'moveToTop') {
-    emit('move-to-top', props.item);
-    message.success(t('messages.moved'));
-  }
-  if (key === 'edit') startEdit();
   if (key === 'openFolder') openImageFolder();
-  if (key === 'delete') {
-    // 选择模式下批量删除
-    if (props.showCheckbox) {
-      emit('batch-delete');
-    } else {
-      emit('delete', props.item.id);
-    }
-  }
-  if (key === 'enter_select') emit('enter-select-mode');
   if (key.startsWith('move_')) {
     const catId = key.slice(5);
     // 选择模式下批量移动
@@ -410,7 +333,54 @@ async function handleMenuSelect(key: string) {
       message.success(t('messages.moved'));
     }
   }
-  if (key.startsWith('expiry_')) setExpiry(key);
+}
+
+// 微缩按钮操作
+async function handleToggleLock(e: MouseEvent) {
+  e.stopPropagation();
+  if (props.showCheckbox) {
+    emit('batch-lock');
+  } else {
+    const result = await clipboardStore.toggleItemLock(props.item);
+    message.success(result === 'locked' ? t('messages.locked') : t('messages.unlocked'));
+  }
+}
+
+function handleMoveToTop(e: MouseEvent) {
+  e.stopPropagation();
+  emit('move-to-top', props.item);
+}
+
+// 编辑模式 toggle：点击编辑按钮进入/退出编辑
+function handleToggleEdit(e: MouseEvent) {
+  e.stopPropagation();
+  if (isEditing.value) {
+    // 正在编辑，点击退出
+    cancelEdit();
+  } else {
+    // 进入编辑
+    startEdit();
+  }
+}
+
+// 选择模式 toggle：点击选择按钮进入/退出选择模式
+function handleToggleSelectMode(e: MouseEvent) {
+  e.stopPropagation();
+  emit('toggle-select-mode');
+}
+
+function handleDelete(e: MouseEvent) {
+  e.stopPropagation();
+  // 检查锁定状态，阻止删除
+  if (isLocked.value) {
+    message.warning(t('messages.lockedCannotDelete'));
+    return;
+  }
+  if (props.showCheckbox) {
+    emit('batch-delete');
+  } else {
+    emit('delete', props.item.id);
+  }
 }
 
 async function startEdit() {
@@ -524,6 +494,34 @@ async function handleCrossAppDragEnd(e: DragEvent) {
       <input type="checkbox" :checked="props.selected" />
       <span class="checkmark"></span>
     </label>
+
+    <!-- 微缩按钮区域 - 精简模式下不渲染，锁定状态只显示锁定按钮 -->
+    <div v-if="!props.compact" class="action-buttons" :class="{ 'has-locked': isLocked, 'locked-only': isLocked }">
+      <!-- 锁定按钮：未锁定显示空心锁，锁定后显示 🔒，分类级别锁定加分类名 -->
+      <button class="action-btn lock-btn" :class="{ active: isLocked, 'category-locked': isCategoryLevelLocked && !isCardLevelLocked }" :title="isLocked ? t('contextMenu.unlock') : t('contextMenu.lock')" @click="handleToggleLock">
+        <template v-if="isLocked">
+          <span class="lock-emoji">🔒</span>
+          <span v-if="lockedLabel" class="lock-category-name">{{ lockedLabel }}</span>
+        </template>
+        <NIcon v-else :component="UnlockIcon" size="14" />
+      </button>
+      <!-- 锁定状态下隐藏其他按钮 -->
+      <template v-if="!isLocked">
+        <button class="action-btn" :title="t('contextMenu.moveToTop')" @click="handleMoveToTop">
+          <NIcon :component="TopIcon" size="14" />
+        </button>
+        <button v-if="isTextItem" class="action-btn" :class="{ active: isEditing }" :title="t('contextMenu.edit')" @click="handleToggleEdit">
+          <NIcon :component="EditIcon" size="14" />
+        </button>
+        <button class="action-btn" :class="{ active: props.showCheckbox }" :title="t('contextMenu.enterSelectMode')" @click="handleToggleSelectMode">
+          <NIcon :component="SelectIcon" size="14" />
+        </button>
+        <button class="action-btn delete" :title="t('contextMenu.delete')" @click="handleDelete">
+          <NIcon :component="DeleteIcon" size="14" />
+        </button>
+      </template>
+    </div>
+
     <!-- 跨应用拖拽手柄 - 精简模式下不渲染 -->
     <div
       v-if="!props.compact"
@@ -577,9 +575,6 @@ async function handleCrossAppDragEnd(e: DragEvent) {
         </template>
       </div>
     </div>
-
-    <!-- 锁定角标 - 精简模式下不渲染 -->
-    <div v-if="isLocked && !props.compact" class="locked-badge">🔒</div>
 
     <!-- 过期时间提示 - 精简模式下不渲染 -->
     <div v-if="expiryLabel && !props.compact" class="expiry-badge" :class="{ warning: isExpiringSoon }">
@@ -784,6 +779,18 @@ html.dark .image-placeholder {
   width: 100%;
 }
 
+/* 编辑模式下卡片样式：固定位置、高亮边框 */
+.task-card:has(.edit-mode) {
+  border-color: #FFB800;
+  border-left-color: #FFB800;
+  box-shadow: 0 4px 16px rgba(255, 184, 0, 0.2);
+}
+
+html.dark .task-card:has(.edit-mode) {
+  border-color: #FFB800;
+  border-left-color: #FFB800;
+}
+
 .edit-title-input {
   margin-bottom: 8px;
 }
@@ -935,17 +942,132 @@ html.dark .task-card.selected {
   background: rgba(74, 144, 217, 0.1);
 }
 
-/* 跨应用拖拽手柄 - 右侧中间 */
-.cross-app-drag-handle {
+/* 微缩按钮区域 - 顶部右侧 */
+.action-buttons {
   position: absolute;
-  top: 50%;
+  top: 4px;
   right: 8px;
-  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+
+.task-card:hover .action-buttons {
+  opacity: 1;
+}
+
+/* 有锁定项时，锁定按钮常驻显示 */
+.action-buttons.has-locked {
+  opacity: 1;
+}
+
+/* 锁定状态下只显示锁定按钮 */
+.action-buttons.locked-only {
+  gap: 0;
+}
+
+/* 锁定 emoji 样式 */
+.lock-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* 分类锁定名称样式 */
+.lock-category-name {
+  font-size: 12px;
+  color: #666;
+  margin-left: 2px;
+}
+
+html.dark .lock-category-name {
+  color: #888;
+}
+
+/* 分类级别锁定按钮样式（稍宽以容纳分类名） */
+.action-btn.lock-btn.category-locked {
+  width: auto;
+  padding: 0 6px;
+  gap: 2px;
+}
+
+/* 锁定按钮：激活时美观样式 */
+.action-btn.lock-btn.active {
+  color: #E05252;
+  background: rgba(224, 82, 82, 0.1);
+}
+
+.action-btn.lock-btn.active:hover {
+  background: rgba(224, 82, 82, 0.2);
+}
+
+html.dark .action-btn.lock-btn.active {
+  color: #E05252;
+  background: rgba(224, 82, 82, 0.15);
+}
+
+.action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.action-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #333;
+}
+
+html.dark .action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+}
+
+/* 激活状态：编辑、选择模式 */
+.action-btn.active {
+  color: #4A90D9;
+  background: rgba(74, 144, 217, 0.1);
+}
+
+.action-btn.active:hover {
+  background: rgba(74, 144, 217, 0.2);
+  color: #3A7BC8;
+}
+
+html.dark .action-btn.active {
+  color: #4A90D9;
+  background: rgba(74, 144, 217, 0.15);
+}
+
+/* 删除按钮：红色 */
+.action-btn.delete {
+  color: #E05252;
+}
+
+.action-btn.delete:hover {
+  background: rgba(224, 82, 82, 0.15);
+  color: #C04040;
+}
+
+/* 跨应用拖拽手柄 - 底部右侧（避免和微缩按钮冲突） */
+.cross-app-drag-handle {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   cursor: grab;
   opacity: 0;
@@ -974,16 +1096,5 @@ html.dark .cross-app-drag-handle:hover {
   opacity: 1;
   background: rgba(74, 144, 217, 0.2);
   color: #4A90D9;
-}
-
-/* 锁定角标 */
-.locked-badge {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  font-size: 14px;
-  z-index: 6;
-  pointer-events: none;
 }
 </style>
