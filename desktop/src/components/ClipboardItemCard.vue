@@ -29,6 +29,7 @@ const emit = defineEmits<{
   (e: 'contextmenu', event: MouseEvent, item: ClipboardItem): void;
   (e: 'toggle-select', id: string, shift: boolean): void;
   (e: 'enter-select-mode'): void;
+  (e: 'toggle-select-mode'): void;
   (e: 'move-to-category', item: ClipboardItem, categoryId: string): void;
   (e: 'batch-move-to-category', categoryId: string): void;
   (e: 'batch-lock'): void;
@@ -332,17 +333,24 @@ async function handleToggleLock(e: MouseEvent) {
 function handleMoveToTop(e: MouseEvent) {
   e.stopPropagation();
   emit('move-to-top', props.item);
-  message.success(t('messages.moved'));
 }
 
-function handleStartEdit(e: MouseEvent) {
+// 编辑模式 toggle：点击编辑按钮进入/退出编辑
+function handleToggleEdit(e: MouseEvent) {
   e.stopPropagation();
-  startEdit();
+  if (isEditing.value) {
+    // 正在编辑，点击退出
+    cancelEdit();
+  } else {
+    // 进入编辑
+    startEdit();
+  }
 }
 
-function handleEnterSelectMode(e: MouseEvent) {
+// 选择模式 toggle：点击选择按钮进入/退出选择模式
+function handleToggleSelectMode(e: MouseEvent) {
   e.stopPropagation();
-  emit('enter-select-mode');
+  emit('toggle-select-mode');
 }
 
 function handleDelete(e: MouseEvent) {
@@ -474,10 +482,10 @@ async function handleCrossAppDragEnd(e: DragEvent) {
       <button class="action-btn" :title="t('contextMenu.moveToTop')" @click="handleMoveToTop">
         <NIcon :component="TopIcon" size="14" />
       </button>
-      <button v-if="isTextItem" class="action-btn" :title="t('contextMenu.edit')" @click="handleStartEdit">
+      <button v-if="isTextItem" class="action-btn" :class="{ active: isEditing }" :title="t('contextMenu.edit')" @click="handleToggleEdit">
         <NIcon :component="EditIcon" size="14" />
       </button>
-      <button class="action-btn" :title="t('contextMenu.enterSelectMode')" @click="handleEnterSelectMode">
+      <button class="action-btn" :class="{ active: props.showCheckbox }" :title="t('contextMenu.enterSelectMode')" @click="handleToggleSelectMode">
         <NIcon :component="SelectIcon" size="14" />
       </button>
       <button class="action-btn delete" :title="t('contextMenu.delete')" @click="handleDelete">
@@ -934,16 +942,30 @@ html.dark .action-btn:hover {
   color: #e0e0e0;
 }
 
+/* 激活状态：锁定、编辑、选择模式 */
 .action-btn.active {
   color: #4A90D9;
+  background: rgba(74, 144, 217, 0.1);
 }
 
+.action-btn.active:hover {
+  background: rgba(74, 144, 217, 0.2);
+  color: #3A7BC8;
+}
+
+html.dark .action-btn.active {
+  color: #4A90D9;
+  background: rgba(74, 144, 217, 0.15);
+}
+
+/* 删除按钮：红色 */
 .action-btn.delete {
   color: #E05252;
 }
 
 .action-btn.delete:hover {
-  background: rgba(224, 82, 82, 0.1);
+  background: rgba(224, 82, 82, 0.15);
+  color: #C04040;
 }
 
 /* 跨应用拖拽手柄 - 底部右侧（避免和微缩按钮冲突） */

@@ -232,6 +232,19 @@ function enterSelectModeFromCard() {
   }
 }
 
+// Toggle 选择模式：已进入则退出，未进入则进入
+function toggleSelectMode() {
+  if (selectMode.value) {
+    // 退出选择模式，清空选中
+    selectMode.value = false;
+    selectedIds.value = new Set();
+    selectionAnchor.value = null;
+  } else {
+    // 进入选择模式
+    selectMode.value = true;
+  }
+}
+
 // 快捷键处理：A全选，ESC第1次清空，ESC第2次退出
 function handleKeydown(e: KeyboardEvent) {
   // A键全选（在选择模式下）
@@ -272,8 +285,9 @@ function moveToCategory(item: ClipboardItem, categoryId: string) {
 }
 
 // 移动到最顶部
-function moveItemToTop(item: ClipboardItem) {
-  clipboardStore.moveItemToTop(item);
+async function moveItemToTop(item: ClipboardItem) {
+  await clipboardStore.moveItemToTop(item);
+  message.success(t('messages.moved'));
 }
 
 // 批量移动分类（使用事务化批量操作）
@@ -507,6 +521,7 @@ function cancelEdit() {
             @contextmenu="handleItemContextMenu($event, element)"
             @toggle-select="toggleSelect"
             @enter-select-mode="enterSelectModeFromCard"
+            @toggle-select-mode="toggleSelectMode"
             @move-to-category="moveToCategory"
             @batch-move-to-category="batchMoveToCategory"
             @batch-lock="batchLock"
@@ -538,6 +553,7 @@ function cancelEdit() {
           @contextmenu="handleItemContextMenu($event, item)"
           @toggle-select="toggleSelect"
           @enter-select-mode="enterSelectModeFromCard"
+            @toggle-select-mode="toggleSelectMode"
           @move-to-category="moveToCategory"
           @batch-move-to-category="batchMoveToCategory"
           @batch-lock="batchLock"
@@ -575,6 +591,7 @@ function cancelEdit() {
             @contextmenu="handleItemContextMenu($event, item)"
             @toggle-select="toggleSelect"
             @enter-select-mode="enterSelectModeFromCard"
+            @toggle-select-mode="toggleSelectMode"
             @move-to-category="moveToCategory"
             @batch-move-to-category="batchMoveToCategory"
             @batch-lock="batchLock"

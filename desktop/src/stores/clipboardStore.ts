@@ -394,7 +394,9 @@ export const useClipboardStore = defineStore('clipboard', () => {
     item.sortOrder = (minSort || 0) - 1;
     await updateClipboardItem(item);
     // shallowRef 需要整体替换触发更新
-    items.value = items.value.map(i => i.id === item.id ? item : i);
+    items.value = items.value.map(i => i.id === item.id ? { ...i, sortOrder: item.sortOrder } : i);
+    // 重新预计算排序
+    precomputeAllCategories();
   }
 
   // 从剪贴板粘贴
