@@ -106,6 +106,22 @@ onUnmounted(() => {
 const isLocked = computed(() => clipboardStore.isItemLocked(props.item));
 const isTextItem = computed(() => !props.item.imageBase64 && !props.item.imagePath);
 
+// 锁定类型判断：区分卡片级别锁定和分类级别锁定
+const isCardLevelLocked = computed(() => props.item.locked === true);
+const isCategoryLevelLocked = computed(() => clipboardStore.isItemInLockedCategory(props.item));
+// 获取锁定分类的名称（用于显示）
+const lockedCategoryName = computed(() => {
+  if (!isCategoryLevelLocked.value) return null;
+  const category = clipboardStore.categories.find(c => c.id === props.item.categoryId);
+  return category?.name || null;
+});
+// 锁定提示文字：卡片级别只显示锁头，分类级别显示"锁头+分类名"
+const lockedLabel = computed(() => {
+  if (!isLocked.value) return null;
+  if (isCardLevelLocked.value) return null; // 卡片级别锁定，不显示额外文字
+  return lockedCategoryName.value; // 分类级别锁定，显示分类名
+});
+
 // 过期时间相关
 const expiryLabel = computed(() => {
   if (!props.item.expiresAt) return null;
@@ -481,9 +497,12 @@ async function handleCrossAppDragEnd(e: DragEvent) {
 
     <!-- 微缩按钮区域 - 精简模式下不渲染，锁定状态只显示锁定按钮 -->
     <div v-if="!props.compact" class="action-buttons" :class="{ 'has-locked': isLocked, 'locked-only': isLocked }">
-      <!-- 锁定按钮：激活时用 emoji 🔒 -->
-      <button class="action-btn lock-btn" :class="{ active: isLocked }" :title="isLocked ? t('contextMenu.unlock') : t('contextMenu.lock')" @click="handleToggleLock">
-        <span v-if="isLocked" class="lock-emoji">🔒</span>
+      <!-- 锁定按钮：未锁定显示空心锁，锁定后显示 🔒，分类级别锁定加分类名 -->
+      <button class="action-btn lock-btn" :class="{ active: isLocked, 'category-locked': isCategoryLevelLocked && !isCardLevelLocked }" :title="isLocked ? t('contextMenu.unlock') : t('contextMenu.lock')" @click="handleToggleLock">
+        <template v-if="isLocked">
+          <span class="lock-emoji">🔒</span>
+          <span v-if="lockedLabel" class="lock-category-name">{{ lockedLabel }}</span>
+        </template>
         <NIcon v-else :component="UnlockIcon" size="14" />
       </button>
       <!-- 锁定状态下隐藏其他按钮 -->
@@ -954,6 +973,24 @@ html.dark .task-card.selected {
 .lock-emoji {
   font-size: 14px;
   line-height: 1;
+}
+
+/* 分类锁定名称样式 */
+.lock-category-name {
+  font-size: 12px;
+  color: #666;
+  margin-left: 2px;
+}
+
+html.dark .lock-category-name {
+  color: #888;
+}
+
+/* 分类级别锁定按钮样式（稍宽以容纳分类名） */
+.action-btn.lock-btn.category-locked {
+  width: auto;
+  padding: 0 6px;
+  gap: 2px;
 }
 
 /* 锁定按钮：激活时美观样式 */
