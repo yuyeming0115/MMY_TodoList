@@ -475,8 +475,8 @@ async function handleCrossAppDragEnd(e: DragEvent) {
     </label>
 
     <!-- 微缩按钮区域 - 精简模式下不渲染 -->
-    <div v-if="!props.compact" class="action-buttons">
-      <button class="action-btn" :class="{ active: isLocked }" :title="isLocked ? t('contextMenu.unlock') : t('contextMenu.lock')" @click="handleToggleLock">
+    <div v-if="!props.compact" class="action-buttons" :class="{ 'has-locked': isLocked }">
+      <button class="action-btn lock-btn" :class="{ active: isLocked }" :title="isLocked ? t('contextMenu.unlock') : t('contextMenu.lock')" @click="handleToggleLock">
         <NIcon :component="isLocked ? LockIcon : UnlockIcon" size="14" />
       </button>
       <button class="action-btn" :title="t('contextMenu.moveToTop')" @click="handleMoveToTop">
@@ -750,6 +750,18 @@ html.dark .image-placeholder {
   width: 100%;
 }
 
+/* 编辑模式下卡片样式：固定位置、高亮边框 */
+.task-card:has(.edit-mode) {
+  border-color: #FFB800;
+  border-left-color: #FFB800;
+  box-shadow: 0 4px 16px rgba(255, 184, 0, 0.2);
+}
+
+html.dark .task-card:has(.edit-mode) {
+  border-color: #FFB800;
+  border-left-color: #FFB800;
+}
+
 .edit-title-input {
   margin-bottom: 8px;
 }
@@ -918,6 +930,26 @@ html.dark .task-card.selected {
   opacity: 1;
 }
 
+/* 有锁定项时，锁定按钮常驻显示 */
+.action-buttons.has-locked {
+  opacity: 1;
+}
+
+/* 锁定按钮：激活时彩色图标，常驻可见 */
+.action-btn.lock-btn.active {
+  color: #E05252;
+  background: rgba(224, 82, 82, 0.1);
+}
+
+.action-btn.lock-btn.active:hover {
+  background: rgba(224, 82, 82, 0.2);
+}
+
+html.dark .action-btn.lock-btn.active {
+  color: #E05252;
+  background: rgba(224, 82, 82, 0.15);
+}
+
 .action-btn {
   display: flex;
   align-items: center;
@@ -942,7 +974,7 @@ html.dark .action-btn:hover {
   color: #e0e0e0;
 }
 
-/* 激活状态：锁定、编辑、选择模式 */
+/* 激活状态：编辑、选择模式 */
 .action-btn.active {
   color: #4A90D9;
   background: rgba(74, 144, 217, 0.1);

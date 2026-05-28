@@ -307,7 +307,9 @@ export const useClipboardStore = defineStore('clipboard', () => {
   async function updateItem(item: ClipboardItem) {
     await updateClipboardItem(item);
     // shallowRef 需要整体替换触发更新
-    items.value = items.value.map(i => i.id === item.id ? item : i);
+    items.value = items.value.map(i => i.id === item.id ? { ...item } : i);
+    // 重新预计算排序（分类可能变化）
+    precomputeAllCategories();
   }
 
   async function removeItems(ids: string[]) {
@@ -315,11 +317,15 @@ export const useClipboardStore = defineStore('clipboard', () => {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('batch_delete_clipboard_items', { ids });
     items.value = items.value.filter(i => !ids.includes(i.id));
+    // 重新预计算排序
+    precomputeAllCategories();
   }
 
   async function removeItem(id: string) {
     await deleteClipboardItem(id);
     items.value = items.value.filter(i => i.id !== id);
+    // 重新预计算排序
+    precomputeAllCategories();
   }
 
   // 批量更新项目分类（事务化，一次提交）

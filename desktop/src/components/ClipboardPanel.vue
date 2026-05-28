@@ -279,9 +279,10 @@ onUnmounted(() => {
 });
 
 // 移动分类
-function moveToCategory(item: ClipboardItem, categoryId: string) {
+async function moveToCategory(item: ClipboardItem, categoryId: string) {
   item.categoryId = categoryId;
-  clipboardStore.updateItem(item);
+  await clipboardStore.updateItem(item);
+  message.success(t('messages.moved'));
 }
 
 // 移动到最顶部
