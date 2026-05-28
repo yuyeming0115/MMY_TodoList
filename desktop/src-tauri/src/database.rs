@@ -961,9 +961,9 @@ impl Database {
             content.to_string()
         };
 
-        // 使用内置"文本"分类 ID，30 天过期
+        // 使用内置"文本"分类 ID，3 天过期
         let category_id = "builtin_text";
-        let expires_at = now + (30 * 24 * 60 * 60 * 1000);
+        let expires_at = now + (3 * 24 * 60 * 60 * 1000);
 
         // 获取最小 sort_order，新内容放在最前面
         let min_order: i32 = conn.query_row(

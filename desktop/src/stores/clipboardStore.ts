@@ -410,8 +410,8 @@ export const useClipboardStore = defineStore('clipboard', () => {
       const text = await navigator.clipboard.readText();
       if (text) {
         const title = text.length > 30 ? text.substring(0, 30) + '...' : text;
-        // 文本默认30天过期
-        const expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
+        // 文本默认3天过期
+        const expiresAt = Date.now() + (3 * 24 * 60 * 60 * 1000);
         const result = await addItem({
           categoryId: textCategoryId,
           title,

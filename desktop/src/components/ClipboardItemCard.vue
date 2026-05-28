@@ -11,7 +11,6 @@ import type { ClipboardItem } from '../types';
 import { useClipboardStore } from '../stores/clipboardStore';
 import { useImageCacheStore } from '../stores/imageCacheStore';
 import { useI18n } from '../composables/useI18n';
-import { BUILTIN_CLIPBOARD_CATEGORIES } from '../types';
 
 const props = defineProps<{
   item: ClipboardItem;
@@ -104,9 +103,6 @@ onUnmounted(() => {
 
 const isLocked = computed(() => clipboardStore.isItemLocked(props.item));
 const isTextItem = computed(() => !props.item.imageBase64 && !props.item.imagePath);
-const isBuiltinCategory = computed(() =>
-  ([BUILTIN_CLIPBOARD_CATEGORIES.TEXT, BUILTIN_CLIPBOARD_CATEGORIES.IMAGE] as string[]).includes(props.item.categoryId)
-);
 
 // 过期时间相关
 const expiryLabel = computed(() => {
@@ -182,36 +178,6 @@ const contextMenuOptions = computed(() => {
     options.push({ label: t('contextMenu.openFolder'), key: 'openFolder', icon: () => h(NIcon, { component: FolderOpenIcon, size: 16 }) });
   }
 
-  // 内置分类（文本/图像）显示设置过期时间 - 图片只保留1小时选项
-  if (isBuiltinCategory.value) {
-    // 如果是图片类型，只显示1小时过期
-    if (props.item.imagePath || props.item.imageBase64) {
-      options.push({
-        key: 'expiry',
-        label: t('contextMenu.setExpiry'),
-        icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
-        children: [
-          { label: t('expiry.hour1'), key: 'expiry_1h' },
-          { label: t('expiry.never'), key: 'expiry_never' },
-        ],
-      });
-    } else {
-      // 文本类型保留所有选项
-      options.push({
-        key: 'expiry',
-        label: t('contextMenu.setExpiry'),
-        icon: () => h(NIcon, { component: TimeIcon, size: 16 }),
-        children: [
-          { label: t('expiry.hour1'), key: 'expiry_1h' },
-          { label: t('expiry.day1'), key: 'expiry_1d' },
-          { label: t('expiry.days7'), key: 'expiry_7d' },
-          { label: t('expiry.days30'), key: 'expiry_30d' },
-          { label: t('expiry.never'), key: 'expiry_never' },
-        ],
-      });
-    }
-  }
-
   // 移动到分类（直接显示分类列表）
   if (categoryOptions.value.length > 0) {
     options.push({ type: 'divider', key: 'd2' });
@@ -222,7 +188,6 @@ const contextMenuOptions = computed(() => {
   options.push({ label: t('contextMenu.enterSelectMode'), key: 'enter_select', icon: () => h(NIcon, { component: SelectIcon, size: 16 }) });
   options.push({ label: t('contextMenu.delete'), key: 'delete', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
   options.push({ type: 'divider', key: 'd3' });
-  options.push({ label: t('contextMenu.cleanupExpired'), key: 'cleanup', icon: () => h(NIcon, { component: TimeIcon, size: 16, style: { color: '#E05252' } }) });
   // 选择模式下显示"清空所有未锁定项"
   if (props.showCheckbox) {
     options.push({ label: t('contextMenu.clearAllUnlocked'), key: 'clear_all_unlocked', icon: () => h(NIcon, { component: DeleteIcon, size: 16, style: { color: '#E05252' } }) });
@@ -344,32 +309,8 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
 });
 
-function setExpiry(key: string) {
-  const now = Date.now();
-  let expiresAt: number | null = null;
-  let labelKey = '';
-  switch (key) {
-    case 'expiry_1h': expiresAt = now + 1 * 60 * 60 * 1000; labelKey = 'expiry.hour1'; break;
-    case 'expiry_1d': expiresAt = now + 1 * 24 * 60 * 60 * 1000; labelKey = 'expiry.day1'; break;
-    case 'expiry_7d': expiresAt = now + 7 * 24 * 60 * 60 * 1000; labelKey = 'expiry.days7'; break;
-    case 'expiry_30d': expiresAt = now + 30 * 24 * 60 * 60 * 1000; labelKey = 'expiry.days30'; break;
-    case 'expiry_never': expiresAt = null; labelKey = 'expiry.never'; break;
-  }
-  clipboardStore.setItemExpiry(props.item.id, expiresAt);
-  message.success(t('messages.expirySet', { label: t(labelKey) }));
-}
-
 async function handleMenuSelect(key: string) {
   showContextMenu.value = false;
-  if (key === 'cleanup') {
-    const count = await clipboardStore.cleanupExpiredItems();
-    if (count > 0) {
-      message.success(t('messages.cleanupDone', { count }));
-    } else {
-      message.info(t('messages.noExpiredItems'));
-    }
-    return;
-  }
   if (key === 'clear_all_unlocked') {
     const count = await clipboardStore.clearAllUnlocked();
     message.success(t('messages.clearAllUnlockedDone', { count }));
@@ -410,7 +351,6 @@ async function handleMenuSelect(key: string) {
       message.success(t('messages.moved'));
     }
   }
-  if (key.startsWith('expiry_')) setExpiry(key);
 }
 
 async function startEdit() {
