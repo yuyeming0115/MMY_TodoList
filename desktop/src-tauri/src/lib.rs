@@ -437,31 +437,62 @@ fn try_read_once() -> Result<Option<String>, String> {
 }
 
 /// 将 base64 图片写入系统剪贴板（PNG 注册格式）
+/// 异步执行：图片解码和编码在后台线程，避免阻塞 UI
 #[tauri::command]
-fn write_image_to_clipboard(base64: String) -> Result<(), String> {
+async fn write_image_to_clipboard(base64: String) -> Result<(), String> {
     use base64::{Engine, engine::general_purpose::STANDARD};
 
-    let bytes = STANDARD.decode(&base64).map_err(|e| format!("Base64 解码失败: {}", e))?;
+    // 在后台线程处理图片解码和编码（避免阻塞主线程）
+    let png_data = tauri::async_runtime::spawn_blocking(move || {
+        let bytes = STANDARD.decode(&base64).map_err(|e| format!("Base64 解码失败: {}", e))?;
 
+        #[cfg(target_os = "windows")]
+        {
+            use image::codecs::png::PngEncoder;
+            use image::ImageEncoder;
+
+            let img = image::load_from_memory(&bytes).map_err(|e| format!("图片解码失败: {}", e))?;
+            let rgba = img.into_rgba8();
+            let (w, h) = rgba.dimensions();
+
+            // PNG 编码
+            let mut png_buf = Vec::new();
+            PngEncoder::new(&mut png_buf)
+                .write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)
+                .map_err(|e| format!("PNG 编码失败: {}", e))?;
+
+            Ok::<Vec<u8>, String>(png_buf)
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use image::load_from_memory;
+
+            let img = load_from_memory(&bytes).map_err(|e| format!("图片解码失败: {}", e))?;
+            let rgba = img.into_rgba8();
+            let (w, h) = rgba.dimensions();
+
+            // 返回 RGBA 原始数据
+            Ok::<(usize, usize, Vec<u8>), String>((w as usize, h as usize, rgba.into_raw()))
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            let _ = bytes;
+            Err::<Vec<u8>, String>("不支持的平台".to_string())
+        }
+    }).await.map_err(|e| format!("线程执行失败: {}", e))??;
+
+    // 图片处理完成，现在写入剪贴板（这一步相对快速）
     #[cfg(target_os = "windows")]
     {
         use clipboard_win::{Clipboard, raw};
-        use image::codecs::png::PngEncoder;
-        use image::ImageEncoder;
-
-        let img = image::load_from_memory(&bytes).map_err(|e| format!("图片解码失败: {}", e))?;
-        let rgba = img.into_rgba8();
-        let (w, h) = rgba.dimensions();
 
         let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
 
         // 写入 PNG 注册格式（微信、浏览器、PS 都支持）
         if let Some(png_fmt) = clipboard_win::register_format("PNG") {
-            let mut png_buf = Vec::new();
-            PngEncoder::new(&mut png_buf)
-                .write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)
-                .map_err(|e| format!("PNG 编码失败: {}", e))?;
-            raw::set(png_fmt.get(), &png_buf)
+            raw::set(png_fmt.get(), &png_data)
                 .map_err(|e| format!("写入剪贴板失败: {}", e))?;
         }
         Ok(())
@@ -470,17 +501,13 @@ fn write_image_to_clipboard(base64: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         use arboard::Clipboard;
-        use image::load_from_memory;
 
-        let img = load_from_memory(&bytes).map_err(|e| format!("图片解码失败: {}", e))?;
-        let rgba = img.into_rgba8();
-        let (w, h) = rgba.dimensions();
-
+        let (w, h, raw_data) = png_data;
         let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {}", e))?;
         clipboard.set_image(arboard::ImageData {
-            width: w as usize,
-            height: h as usize,
-            bytes: std::borrow::Cow::Owned(rgba.into_raw()),
+            width: w,
+            height: h,
+            bytes: std::borrow::Cow::Owned(raw_data),
         }).map_err(|e| format!("写入剪贴板失败: {}", e))?;
 
         Ok(())
@@ -488,8 +515,7 @@ fn write_image_to_clipboard(base64: String) -> Result<(), String> {
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        let _ = bytes;
-        Err("不支持的平台".to_string())
+        Ok(())
     }
 }
 
