@@ -4,7 +4,7 @@ import { h, ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import {
   TrashOutline as DeleteIcon,
   CreateOutline as EditIcon, TimeOutline as TimeIcon, CheckboxOutline as SelectIcon, FolderOutline as FolderIcon,
-  ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon, LockClosedOutline as LockIcon,
+  ReorderTwoOutline as DragIcon, FolderOpenOutline as FolderOpenIcon,
   LockOpenOutline as UnlockIcon,
   ArrowUpOutline as TopIcon,
 } from '@vicons/ionicons5';
@@ -355,6 +355,11 @@ function handleToggleSelectMode(e: MouseEvent) {
 
 function handleDelete(e: MouseEvent) {
   e.stopPropagation();
+  // 检查锁定状态，阻止删除
+  if (isLocked.value) {
+    message.warning(t('messages.lockedCannotDelete'));
+    return;
+  }
   if (props.showCheckbox) {
     emit('batch-delete');
   } else {
@@ -474,23 +479,28 @@ async function handleCrossAppDragEnd(e: DragEvent) {
       <span class="checkmark"></span>
     </label>
 
-    <!-- 微缩按钮区域 - 精简模式下不渲染 -->
-    <div v-if="!props.compact" class="action-buttons" :class="{ 'has-locked': isLocked }">
+    <!-- 微缩按钮区域 - 精简模式下不渲染，锁定状态只显示锁定按钮 -->
+    <div v-if="!props.compact" class="action-buttons" :class="{ 'has-locked': isLocked, 'locked-only': isLocked }">
+      <!-- 锁定按钮：激活时用 emoji 🔒 -->
       <button class="action-btn lock-btn" :class="{ active: isLocked }" :title="isLocked ? t('contextMenu.unlock') : t('contextMenu.lock')" @click="handleToggleLock">
-        <NIcon :component="isLocked ? LockIcon : UnlockIcon" size="14" />
+        <span v-if="isLocked" class="lock-emoji">🔒</span>
+        <NIcon v-else :component="UnlockIcon" size="14" />
       </button>
-      <button class="action-btn" :title="t('contextMenu.moveToTop')" @click="handleMoveToTop">
-        <NIcon :component="TopIcon" size="14" />
-      </button>
-      <button v-if="isTextItem" class="action-btn" :class="{ active: isEditing }" :title="t('contextMenu.edit')" @click="handleToggleEdit">
-        <NIcon :component="EditIcon" size="14" />
-      </button>
-      <button class="action-btn" :class="{ active: props.showCheckbox }" :title="t('contextMenu.enterSelectMode')" @click="handleToggleSelectMode">
-        <NIcon :component="SelectIcon" size="14" />
-      </button>
-      <button class="action-btn delete" :title="t('contextMenu.delete')" @click="handleDelete">
-        <NIcon :component="DeleteIcon" size="14" />
-      </button>
+      <!-- 锁定状态下隐藏其他按钮 -->
+      <template v-if="!isLocked">
+        <button class="action-btn" :title="t('contextMenu.moveToTop')" @click="handleMoveToTop">
+          <NIcon :component="TopIcon" size="14" />
+        </button>
+        <button v-if="isTextItem" class="action-btn" :class="{ active: isEditing }" :title="t('contextMenu.edit')" @click="handleToggleEdit">
+          <NIcon :component="EditIcon" size="14" />
+        </button>
+        <button class="action-btn" :class="{ active: props.showCheckbox }" :title="t('contextMenu.enterSelectMode')" @click="handleToggleSelectMode">
+          <NIcon :component="SelectIcon" size="14" />
+        </button>
+        <button class="action-btn delete" :title="t('contextMenu.delete')" @click="handleDelete">
+          <NIcon :component="DeleteIcon" size="14" />
+        </button>
+      </template>
     </div>
 
     <!-- 跨应用拖拽手柄 - 精简模式下不渲染 -->
@@ -935,7 +945,18 @@ html.dark .task-card.selected {
   opacity: 1;
 }
 
-/* 锁定按钮：激活时彩色图标，常驻可见 */
+/* 锁定状态下只显示锁定按钮 */
+.action-buttons.locked-only {
+  gap: 0;
+}
+
+/* 锁定 emoji 样式 */
+.lock-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* 锁定按钮：激活时美观样式 */
 .action-btn.lock-btn.active {
   color: #E05252;
   background: rgba(224, 82, 82, 0.1);

@@ -587,6 +587,7 @@ function cancelEdit() {
             :show-checkbox="selectMode || selectedIds.size > 0"
             :selected="selectedIds.has(item.id)"
             :selection-anchor="selectionAnchor"
+            :is-visible="true"
             @delete="deleteItem"
             @update-priority="updatePriority"
             @contextmenu="handleItemContextMenu($event, item)"
