@@ -539,24 +539,6 @@ fn mark_clipboard_skip_next(monitor: tauri::State<'_, ClipboardMonitor>) {
 /// 异步执行：文件读取、图片解码、PNG 编码都在后台线程
 #[tauri::command]
 async fn copy_image_from_path(path: String) -> Result<(), String> {
-    copy_image_internal(path, None).await
-}
-
-/// 复制图片到剪贴板（支持缩略图优先）
-/// 如果提供了缩略图，先快速写入缩略图，然后后台写入完整图片
-#[tauri::command]
-async fn copy_image_with_thumbnail(path: String, thumbnail_base64: Option<String>) -> Result<(), String> {
-    copy_image_internal(path, thumbnail_base64).await
-}
-
-/// 内部复制图片实现
-async fn copy_image_internal(path: String, thumbnail_base64: Option<String>) -> Result<(), String> {
-    // 如果有缩略图，先快速写入缩略图到剪贴板（同步操作，瞬间完成）
-    #[cfg(target_os = "windows")]
-    if let Some(thumbnail) = thumbnail_base64 {
-        write_thumbnail_to_clipboard(&thumbnail)?;
-    }
-
     // 在后台线程完成完整图片的处理
     let clipboard_data = tauri::async_runtime::spawn_blocking(move || {
         // 1. 读取文件
@@ -620,7 +602,6 @@ async fn copy_image_internal(path: String, thumbnail_base64: Option<String>) -> 
         }
 
         // 写入 CF_DIB 格式（格式号 8，传统 Windows 应用）
-        // CF_DIB = 8
         raw::set(8, &dib_data)
             .map_err(|e| format!("写入 DIB 失败: {}", e))?;
 
@@ -645,6 +626,22 @@ async fn copy_image_internal(path: String, thumbnail_base64: Option<String>) -> 
     {
         Ok(())
     }
+}
+
+/// 复制图片到剪贴板（支持缩略图优先）
+/// 大图：只写入缩略图（瞬间完成），避免阻塞用户的其他复制操作
+/// 小图：直接写入完整图片
+#[tauri::command]
+async fn copy_image_with_thumbnail(path: String, thumbnail_base64: Option<String>) -> Result<(), String> {
+    // 如果有缩略图，直接写入缩略图到剪贴板（瞬间完成，不阻塞）
+    #[cfg(target_os = "windows")]
+    if let Some(thumbnail) = thumbnail_base64 {
+        write_thumbnail_to_clipboard(&thumbnail)?;
+        return Ok(()); // 大图只写缩略图，立即返回
+    }
+
+    // 没有缩略图（小图），直接从文件复制
+    copy_image_from_path(path).await
 }
 
 /// 快速写入缩略图到剪贴板（同步操作，瞬间完成）
