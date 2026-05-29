@@ -1,5 +1,5 @@
 use std::panic::catch_unwind;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -27,6 +27,8 @@ pub struct ClipboardMonitor {
     running: Arc<AtomicBool>,
     /// 拖拽时设为 true，阻止监控器抓取自身写入的剪贴板内容
     skip_next: Arc<AtomicBool>,
+    /// 当前任务的版本号，新任务时会增加，用于取消旧任务
+    task_version: Arc<AtomicU64>,
 }
 
 impl ClipboardMonitor {
@@ -34,12 +36,18 @@ impl ClipboardMonitor {
         Self {
             running: Arc::new(AtomicBool::new(false)),
             skip_next: Arc::new(AtomicBool::new(false)),
+            task_version: Arc::new(AtomicU64::new(0)),
         }
     }
 
     /// 标记下一次剪贴板变化应该被跳过（拖拽前调用）
     pub fn mark_skip_next(&self) {
         self.skip_next.store(true, Ordering::SeqCst);
+    }
+
+    /// 取消当前正在执行的后台任务（新内容到来时调用）
+    pub fn cancel_current_task(&self) {
+        self.task_version.fetch_add(1, Ordering::SeqCst);
     }
 
     pub fn start(&self, app_handle: tauri::AppHandle, db: Arc<Database>) {
@@ -50,9 +58,10 @@ impl ClipboardMonitor {
 
         let running = self.running.clone();
         let skip_next = self.skip_next.clone();
+        let task_version = self.task_version.clone();
 
         thread::spawn(move || {
-            start_clipboard_monitor(running, skip_next, app_handle, db);
+            start_clipboard_monitor(running, skip_next, task_version, app_handle, db);
         });
     }
 
@@ -65,6 +74,7 @@ impl ClipboardMonitor {
 fn start_clipboard_monitor(
     running: Arc<AtomicBool>,
     skip_next: Arc<AtomicBool>,
+    task_version: Arc<AtomicU64>,
     app_handle: tauri::AppHandle,
     db: Arc<Database>,
 ) {
@@ -84,8 +94,11 @@ fn start_clipboard_monitor(
         // 延迟一小段时间让用户的复制操作完成
         thread::sleep(Duration::from_millis(READ_DELAY_MS));
 
+        // 取消之前的后台任务（新内容到来）
+        let current_version = task_version.fetch_add(1, Ordering::SeqCst);
+
         // 读取剪贴板内容
-        read_and_process_clipboard(&db, &app_handle, &mut last_text_hash, &mut last_image_hash);
+        read_and_process_clipboard(&db, &app_handle, &mut last_text_hash, &mut last_image_hash, &task_version, current_version);
 
         thread::sleep(poll_interval);
     }
@@ -99,6 +112,8 @@ fn read_and_process_clipboard(
     app_handle: &tauri::AppHandle,
     last_text_hash: &mut Option<String>,
     last_image_hash: &mut Option<String>,
+    task_version: &Arc<AtomicU64>,
+    current_version: u64,
 ) {
     #[cfg(target_os = "windows")]
     {
@@ -139,14 +154,14 @@ fn read_and_process_clipboard(
         // 读取图片
         let clip_image = catch_unwind(|| try_read_image_via_raw());
 
-        process_clipboard_data(clip_text, clip_image, db, app_handle, last_text_hash, last_image_hash);
+        process_clipboard_data(clip_text, clip_image, db, app_handle, last_text_hash, last_image_hash, task_version, current_version);
     }
 
     #[cfg(target_os = "macos")]
     {
         let clip_text = catch_unwind(|| try_read_text());
         let clip_image = catch_unwind(|| try_read_image_data());
-        process_clipboard_data(clip_text, clip_image, db, app_handle, last_text_hash, last_image_hash);
+        process_clipboard_data(clip_text, clip_image, db, app_handle, last_text_hash, last_image_hash, task_version, current_version);
     }
 }
 
@@ -265,6 +280,8 @@ fn process_clipboard_data(
     app_handle: &tauri::AppHandle,
     last_text_hash: &mut Option<String>,
     last_image_hash: &mut Option<String>,
+    task_version: &Arc<AtomicU64>,
+    current_version: u64,
 ) {
     // 1. 处理文本
     match clip_text {
@@ -299,10 +316,19 @@ fn process_clipboard_data(
                     let png_data = img_data.png_data.clone();
                     let width = img_data.width;
                     let height = img_data.height;
+                    let task_version_clone = task_version.clone();
+                    let start_version = current_version;
 
                     thread::spawn(move || {
                         // 生成缩略图（耗时操作，在后台线程执行）
                         let thumbnail = generate_thumbnail(&png_data, THUMBNAIL_MAX_SIZE);
+
+                        // 检查任务是否被取消（新内容已到来）
+                        if task_version_clone.load(Ordering::SeqCst) != start_version {
+                            eprintln!("[剪贴板] 大图任务被取消，跳过数据库写入");
+                            return;
+                        }
+
                         if db_clone.add_auto_clipboard_image_large_with_thumbnail(
                             &width,
                             &height,
