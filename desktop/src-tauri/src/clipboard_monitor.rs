@@ -293,16 +293,25 @@ fn process_clipboard_data(
                 let is_large_image = pixels > MAX_IMAGE_PIXELS_FOR_BASE64;
 
                 if is_large_image {
-                    // 生成缩略图（用于快速复制）
-                    let thumbnail = generate_thumbnail(&img_data.png_data, THUMBNAIL_MAX_SIZE);
-                    if db.add_auto_clipboard_image_large_with_thumbnail(
-                        &img_data.width,
-                        &img_data.height,
-                        &img_data.png_data,
-                        thumbnail.as_deref(),
-                    ).is_ok() {
-                        app_handle.emit("clipboard-changed", ()).ok();
-                    }
+                    // 大图处理：移到后台线程，避免阻塞剪贴板监控
+                    let db_clone = db.clone();
+                    let app_handle_clone = app_handle.clone();
+                    let png_data = img_data.png_data.clone();
+                    let width = img_data.width;
+                    let height = img_data.height;
+
+                    thread::spawn(move || {
+                        // 生成缩略图（耗时操作，在后台线程执行）
+                        let thumbnail = generate_thumbnail(&png_data, THUMBNAIL_MAX_SIZE);
+                        if db_clone.add_auto_clipboard_image_large_with_thumbnail(
+                            &width,
+                            &height,
+                            &png_data,
+                            thumbnail.as_deref(),
+                        ).is_ok() {
+                            app_handle_clone.emit("clipboard-changed", ()).ok();
+                        }
+                    });
                 } else {
                     let base64 = format!(
                         "data:image/png;base64,{}",
