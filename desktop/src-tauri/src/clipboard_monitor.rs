@@ -14,6 +14,8 @@ const MAX_TEXT_LEN: usize = 1_048_576;
 const MAX_IMAGE_BASE64_LEN: usize = 52_428_800;
 /// 最大图片像素数（超过此值只存路径，不转 base64）
 const MAX_IMAGE_PIXELS_FOR_BASE64: u64 = 20_000_000;
+/// 缩略图最大尺寸（像素）
+const THUMBNAIL_MAX_SIZE: u32 = 200;
 
 /// 延迟读取时间（毫秒）- 收到变化通知后延迟读取，避免干扰用户复制操作
 const READ_DELAY_MS: u64 = 100;
@@ -291,10 +293,13 @@ fn process_clipboard_data(
                 let is_large_image = pixels > MAX_IMAGE_PIXELS_FOR_BASE64;
 
                 if is_large_image {
-                    if db.add_auto_clipboard_image_large(
+                    // 生成缩略图（用于快速复制）
+                    let thumbnail = generate_thumbnail(&img_data.png_data, THUMBNAIL_MAX_SIZE);
+                    if db.add_auto_clipboard_image_large_with_thumbnail(
                         &img_data.width,
                         &img_data.height,
                         &img_data.png_data,
+                        thumbnail.as_deref(),
                     ).is_ok() {
                         app_handle.emit("clipboard-changed", ()).ok();
                     }
@@ -317,4 +322,36 @@ fn process_clipboard_data(
         }
         Ok(None) | Err(_) => {}
     }
+}
+
+/// 生成缩略图（用于大图片快速复制）
+/// 将图片缩放到指定最大尺寸，返回 base64 编码的 PNG
+fn generate_thumbnail(png_data: &[u8], max_size: u32) -> Option<String> {
+    use image::{ImageFormat, imageops, GenericImageView};
+    use base64::{Engine, engine::general_purpose::STANDARD};
+
+    let img = image::load_from_memory(png_data).ok()?;
+    let (w, h) = img.dimensions();
+
+    // 计算缩略图尺寸（保持比例）
+    let max_dim = w.max(h);
+    if max_dim <= max_size {
+        // 图片已经足够小，直接编码
+        let mut buf = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png).ok()?;
+        return Some(format!("data:image/png;base64,{}", STANDARD.encode(&buf)));
+    }
+
+    let ratio = max_size as f32 / max_dim as f32;
+    let thumb_w = (w as f32 * ratio) as u32;
+    let thumb_h = (h as f32 * ratio) as u32;
+
+    // 缩放图片（使用 Triangle 滤波器，速度快）
+    let thumbnail = img.resize(thumb_w, thumb_h, imageops::FilterType::Triangle);
+
+    // 编码为 PNG base64
+    let mut buf = Vec::new();
+    thumbnail.write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png).ok()?;
+
+    Some(format!("data:image/png;base64,{}", STANDARD.encode(&buf)))
 }

@@ -202,6 +202,7 @@ pub fn run() {
             simulate_ctrl_v,
             mark_clipboard_skip_next,
             copy_image_from_path,
+            copy_image_with_thumbnail,
             // 快捷键命令
             commands::update_global_shortcut,
         ])
@@ -437,14 +438,14 @@ fn try_read_once() -> Result<Option<String>, String> {
     Ok(None)
 }
 
-/// 将 base64 图片写入系统剪贴板（PNG 注册格式）
+/// 将 base64 图片写入系统剪贴板（PNG 注册格式 + CF_DIB）
 /// 异步执行：图片解码和编码在后台线程，避免阻塞 UI
 #[tauri::command]
 async fn write_image_to_clipboard(base64: String) -> Result<(), String> {
     use base64::{Engine, engine::general_purpose::STANDARD};
 
     // 在后台线程处理图片解码和编码（避免阻塞主线程）
-    let png_data = tauri::async_runtime::spawn_blocking(move || {
+    let clipboard_data = tauri::async_runtime::spawn_blocking(move || {
         let bytes = STANDARD.decode(&base64).map_err(|e| format!("Base64 解码失败: {}", e))?;
 
         #[cfg(target_os = "windows")]
@@ -462,7 +463,10 @@ async fn write_image_to_clipboard(base64: String) -> Result<(), String> {
                 .write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)
                 .map_err(|e| format!("PNG 编码失败: {}", e))?;
 
-            Ok::<Vec<u8>, String>(png_buf)
+            // 构造 CF_DIB 数据
+            let dib_data = build_dib_data(&rgba, w, h);
+
+            Ok::<(Vec<u8>, Vec<u8>), String>((png_buf, dib_data))
         }
 
         #[cfg(target_os = "macos")]
@@ -473,7 +477,6 @@ async fn write_image_to_clipboard(base64: String) -> Result<(), String> {
             let rgba = img.into_rgba8();
             let (w, h) = rgba.dimensions();
 
-            // 返回 RGBA 原始数据
             Ok::<(usize, usize, Vec<u8>), String>((w as usize, h as usize, rgba.into_raw()))
         }
 
@@ -484,18 +487,24 @@ async fn write_image_to_clipboard(base64: String) -> Result<(), String> {
         }
     }).await.map_err(|e| format!("线程执行失败: {}", e))??;
 
-    // 图片处理完成，现在写入剪贴板（这一步相对快速）
+    // 图片处理完成，现在写入剪贴板
     #[cfg(target_os = "windows")]
     {
         use clipboard_win::{Clipboard, raw};
 
+        let (png_data, dib_data) = clipboard_data;
         let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
 
         // 写入 PNG 注册格式（微信、浏览器、PS 都支持）
         if let Some(png_fmt) = clipboard_win::register_format("PNG") {
             raw::set(png_fmt.get(), &png_data)
-                .map_err(|e| format!("写入剪贴板失败: {}", e))?;
+                .map_err(|e| format!("写入 PNG 失败: {}", e))?;
         }
+
+        // 写入 CF_DIB 格式（传统 Windows 应用）
+        raw::set(8, &dib_data)
+            .map_err(|e| format!("写入 DIB 失败: {}", e))?;
+
         Ok(())
     }
 
@@ -503,7 +512,7 @@ async fn write_image_to_clipboard(base64: String) -> Result<(), String> {
     {
         use arboard::Clipboard;
 
-        let (w, h, raw_data) = png_data;
+        let (w, h, raw_data) = clipboard_data;
         let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {}", e))?;
         clipboard.set_image(arboard::ImageData {
             width: w,
@@ -530,8 +539,26 @@ fn mark_clipboard_skip_next(monitor: tauri::State<'_, ClipboardMonitor>) {
 /// 异步执行：文件读取、图片解码、PNG 编码都在后台线程
 #[tauri::command]
 async fn copy_image_from_path(path: String) -> Result<(), String> {
-    // 在后台线程完成整个流程：读取文件 -> 解码图片 -> 编码 PNG
-    let png_data = tauri::async_runtime::spawn_blocking(move || {
+    copy_image_internal(path, None).await
+}
+
+/// 复制图片到剪贴板（支持缩略图优先）
+/// 如果提供了缩略图，先快速写入缩略图，然后后台写入完整图片
+#[tauri::command]
+async fn copy_image_with_thumbnail(path: String, thumbnail_base64: Option<String>) -> Result<(), String> {
+    copy_image_internal(path, thumbnail_base64).await
+}
+
+/// 内部复制图片实现
+async fn copy_image_internal(path: String, thumbnail_base64: Option<String>) -> Result<(), String> {
+    // 如果有缩略图，先快速写入缩略图到剪贴板（同步操作，瞬间完成）
+    #[cfg(target_os = "windows")]
+    if let Some(thumbnail) = thumbnail_base64 {
+        write_thumbnail_to_clipboard(&thumbnail)?;
+    }
+
+    // 在后台线程完成完整图片的处理
+    let clipboard_data = tauri::async_runtime::spawn_blocking(move || {
         // 1. 读取文件
         let bytes = std::fs::read(&path)
             .map_err(|e| format!("读取图片文件失败: {}", e))?;
@@ -553,7 +580,10 @@ async fn copy_image_from_path(path: String) -> Result<(), String> {
                 .write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)
                 .map_err(|e| format!("PNG 编码失败: {}", e))?;
 
-            Ok::<Vec<u8>, String>(png_buf)
+            // 4. 构造 CF_DIB 数据（BITMAPINFOHEADER + BGRA 像素，从下到上）
+            let dib_data = build_dib_data(&rgba, w, h);
+
+            Ok::<(Vec<u8>, Vec<u8>), String>((png_buf, dib_data))
         }
 
         #[cfg(target_os = "macos")]
@@ -575,16 +605,25 @@ async fn copy_image_from_path(path: String) -> Result<(), String> {
         }
     }).await.map_err(|e| format!("线程执行失败: {}", e))??;
 
-    // 4. 写入剪贴板（快速操作）
+    // 5. 写入剪贴板（同时写入 PNG 和 CF_DIB 格式）
     #[cfg(target_os = "windows")]
     {
         use clipboard_win::{Clipboard, raw};
 
+        let (png_data, dib_data) = clipboard_data;
         let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
+
+        // 写入 PNG 注册格式（现代应用：微信、浏览器、PS）
         if let Some(png_fmt) = clipboard_win::register_format("PNG") {
             raw::set(png_fmt.get(), &png_data)
-                .map_err(|e| format!("写入剪贴板失败: {}", e))?;
+                .map_err(|e| format!("写入 PNG 失败: {}", e))?;
         }
+
+        // 写入 CF_DIB 格式（格式号 8，传统 Windows 应用）
+        // CF_DIB = 8
+        raw::set(8, &dib_data)
+            .map_err(|e| format!("写入 DIB 失败: {}", e))?;
+
         Ok(())
     }
 
@@ -592,7 +631,7 @@ async fn copy_image_from_path(path: String) -> Result<(), String> {
     {
         use arboard::Clipboard;
 
-        let (w, h, raw_data) = png_data;
+        let (w, h, raw_data) = clipboard_data;
         let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {}", e))?;
         clipboard.set_image(arboard::ImageData {
             width: w,
@@ -606,6 +645,125 @@ async fn copy_image_from_path(path: String) -> Result<(), String> {
     {
         Ok(())
     }
+}
+
+/// 快速写入缩略图到剪贴板（同步操作，瞬间完成）
+#[cfg(target_os = "windows")]
+fn write_thumbnail_to_clipboard(thumbnail_base64: &str) -> Result<(), String> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use clipboard_win::{Clipboard, raw};
+    use image::ImageEncoder;
+
+    // 去掉 data:image/...;base64, 前缀
+    let base64_data = if let Some(idx) = thumbnail_base64.find(",") {
+        &thumbnail_base64[idx + 1..]
+    } else {
+        thumbnail_base64
+    };
+
+    let bytes = STANDARD.decode(base64_data)
+        .map_err(|e| format!("缩略图解码失败: {}", e))?;
+
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("缩略图图片解码失败: {}", e))?;
+    let rgba = img.into_rgba8();
+    let (w, h) = rgba.dimensions();
+
+    // 编码为 PNG
+    let mut png_buf = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png_buf)
+        .write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)
+        .map_err(|e| format!("缩略图 PNG 编码失败: {}", e))?;
+
+    // 构造 CF_DIB
+    let dib_data = build_dib_data(&rgba, w, h);
+
+    // 写入剪贴板
+    let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
+
+    if let Some(png_fmt) = clipboard_win::register_format("PNG") {
+        raw::set(png_fmt.get(), &png_buf)
+            .map_err(|e| format!("写入缩略图 PNG 失败: {}", e))?;
+    }
+
+    raw::set(8, &dib_data)
+        .map_err(|e| format!("写入缩略图 DIB 失败: {}", e))?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn write_thumbnail_to_clipboard(thumbnail_base64: &str) -> Result<(), String> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use arboard::Clipboard;
+
+    let base64_data = if let Some(idx) = thumbnail_base64.find(",") {
+        &thumbnail_base64[idx + 1..]
+    } else {
+        thumbnail_base64
+    };
+
+    let bytes = STANDARD.decode(base64_data)
+        .map_err(|e| format!("缩略图解码失败: {}", e))?;
+
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("缩略图图片解码失败: {}", e))?;
+    let rgba = img.into_rgba8();
+    let (w, h) = rgba.dimensions();
+
+    let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {}", e))?;
+    clipboard.set_image(arboard::ImageData {
+        width: w as usize,
+        height: h as usize,
+        bytes: std::borrow::Cow::Owned(rgba.into_raw()),
+    }).map_err(|e| format!("写入剪贴板失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 构造 CF_DIB 数据（BITMAPINFOHEADER + BGRA 像素，从下到上存储）
+#[cfg(target_os = "windows")]
+fn build_dib_data(rgba: &image::RgbaImage, width: u32, height: u32) -> Vec<u8> {
+    // BITMAPINFOHEADER 结构（40 字节）
+    let mut dib = Vec::with_capacity(40 + (width * height * 4) as usize);
+
+    // biSize
+    dib.extend_from_slice(&40u32.to_le_bytes());
+    // biWidth
+    dib.extend_from_slice(&width.to_le_bytes());
+    // biHeight（正值表示从下到上）
+    dib.extend_from_slice(&height.to_le_bytes());
+    // biPlanes
+    dib.extend_from_slice(&1u16.to_le_bytes());
+    // biBitCount（32 位 = BGRA）
+    dib.extend_from_slice(&32u16.to_le_bytes());
+    // biCompression（BI_RGB = 0）
+    dib.extend_from_slice(&0u32.to_le_bytes());
+    // biSizeImage
+    dib.extend_from_slice(&(width * height * 4).to_le_bytes());
+    // biXPelsPerMeter
+    dib.extend_from_slice(&0i32.to_le_bytes());
+    // biYPelsPerMeter
+    dib.extend_from_slice(&0i32.to_le_bytes());
+    // biClrUsed
+    dib.extend_from_slice(&0u32.to_le_bytes());
+    // biClrImportant
+    dib.extend_from_slice(&0u32.to_le_bytes());
+
+    // 像素数据：从下到上，RGBA -> BGRA
+    for y in (0..height).rev() {
+        for x in 0..width {
+            let pixel = rgba.get_pixel(x, y);
+            let [r, g, b, a] = pixel.0;
+            // BGRA 顺序
+            dib.push(b);
+            dib.push(g);
+            dib.push(r);
+            dib.push(a);
+        }
+    }
+
+    dib
 }
 
 /// 模拟 Ctrl+V 粘贴（用于拖拽后自动粘贴）

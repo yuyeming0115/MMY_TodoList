@@ -203,12 +203,20 @@ const contextMenuOptions = computed(() => {
 
 async function copyContent() {
   try {
-    // 如果有 imagePath，直接从文件路径复制（一步完成，避免阻塞）
+    // 如果有 imagePath，从文件路径复制
     if (props.item.imagePath) {
       const { invoke } = await import('@tauri-apps/api/core');
 
       try {
-        await invoke('copy_image_from_path', { path: props.item.imagePath });
+        // 如果有缩略图（imageBase64），优先使用缩略图快速复制
+        if (props.item.imageBase64) {
+          await invoke('copy_image_with_thumbnail', {
+            path: props.item.imagePath,
+            thumbnailBase64: props.item.imageBase64
+          });
+        } else {
+          await invoke('copy_image_from_path', { path: props.item.imagePath });
+        }
         message.success(t('messages.imageCopied'));
       } catch (e) {
         // 文件读取失败，说明文件已被删除
