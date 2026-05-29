@@ -201,6 +201,7 @@ pub fn run() {
             write_image_to_clipboard,
             simulate_ctrl_v,
             mark_clipboard_skip_next,
+            copy_image_from_path,
             // 快捷键命令
             commands::update_global_shortcut,
         ])
@@ -523,6 +524,88 @@ async fn write_image_to_clipboard(base64: String) -> Result<(), String> {
 #[tauri::command]
 fn mark_clipboard_skip_next(monitor: tauri::State<'_, ClipboardMonitor>) {
     monitor.mark_skip_next();
+}
+
+/// 从文件路径直接复制图片到剪贴板（一步完成，避免前端多次调用）
+/// 异步执行：文件读取、图片解码、PNG 编码都在后台线程
+#[tauri::command]
+async fn copy_image_from_path(path: String) -> Result<(), String> {
+    // 在后台线程完成整个流程：读取文件 -> 解码图片 -> 编码 PNG
+    let png_data = tauri::async_runtime::spawn_blocking(move || {
+        // 1. 读取文件
+        let bytes = std::fs::read(&path)
+            .map_err(|e| format!("读取图片文件失败: {}", e))?;
+
+        #[cfg(target_os = "windows")]
+        {
+            use image::codecs::png::PngEncoder;
+            use image::ImageEncoder;
+
+            // 2. 解码图片
+            let img = image::load_from_memory(&bytes)
+                .map_err(|e| format!("图片解码失败: {}", e))?;
+            let rgba = img.into_rgba8();
+            let (w, h) = rgba.dimensions();
+
+            // 3. PNG 编码
+            let mut png_buf = Vec::new();
+            PngEncoder::new(&mut png_buf)
+                .write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)
+                .map_err(|e| format!("PNG 编码失败: {}", e))?;
+
+            Ok::<Vec<u8>, String>(png_buf)
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use image::load_from_memory;
+
+            let img = load_from_memory(&bytes)
+                .map_err(|e| format!("图片解码失败: {}", e))?;
+            let rgba = img.into_rgba8();
+            let (w, h) = rgba.dimensions();
+
+            Ok::<(usize, usize, Vec<u8>), String>((w as usize, h as usize, rgba.into_raw()))
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            let _ = bytes;
+            Err::<Vec<u8>, String>("不支持的平台".to_string())
+        }
+    }).await.map_err(|e| format!("线程执行失败: {}", e))??;
+
+    // 4. 写入剪贴板（快速操作）
+    #[cfg(target_os = "windows")]
+    {
+        use clipboard_win::{Clipboard, raw};
+
+        let _clip = Clipboard::new().map_err(|e| format!("打开剪贴板失败: {}", e))?;
+        if let Some(png_fmt) = clipboard_win::register_format("PNG") {
+            raw::set(png_fmt.get(), &png_data)
+                .map_err(|e| format!("写入剪贴板失败: {}", e))?;
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use arboard::Clipboard;
+
+        let (w, h, raw_data) = png_data;
+        let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {}", e))?;
+        clipboard.set_image(arboard::ImageData {
+            width: w,
+            height: h,
+            bytes: std::borrow::Cow::Owned(raw_data),
+        }).map_err(|e| format!("写入剪贴板失败: {}", e))?;
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        Ok(())
+    }
 }
 
 /// 模拟 Ctrl+V 粘贴（用于拖拽后自动粘贴）

@@ -203,14 +203,12 @@ const contextMenuOptions = computed(() => {
 
 async function copyContent() {
   try {
-    // 如果有 imagePath，从文件读取原图
+    // 如果有 imagePath，直接从文件路径复制（一步完成，避免阻塞）
     if (props.item.imagePath) {
       const { invoke } = await import('@tauri-apps/api/core');
 
       try {
-        const base64 = await invoke<string>('read_clipboard_image_file', { path: props.item.imagePath });
-        const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
-        await invoke('write_image_to_clipboard', { base64: base64Data });
+        await invoke('copy_image_from_path', { path: props.item.imagePath });
         message.success(t('messages.imageCopied'));
       } catch (e) {
         // 文件读取失败，说明文件已被删除
