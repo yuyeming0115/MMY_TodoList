@@ -137,6 +137,9 @@ export default {
     shortcutRegistered: '快捷键已生效',
     shortcutFailed: '快捷键注册失败，可能被系统或其他应用占用',
     shortcutHintFull: '常见无法注册的快捷键：F1（帮助）、Alt+F4（关闭窗口）、系统保留组合等',
+    // 剪贴板监控
+    enableClipboardMonitor: '剪贴板监控',
+    enableClipboardMonitorHint: '启用剪贴板历史记录功能（禁用后可减少系统资源占用）',
   },
   // 消息提示
   messages: {

@@ -44,6 +44,7 @@ export interface AppSettings {
   customSortBackup?: Record<string, number>; // 切换排序时保存的 sortOrder 备份
   clipboardSortMode?: 'custom' | 'name' | 'createdAt'; // 剪贴板排序模式
   clipboardSortBackup?: Record<string, number>; // 剪贴板排序备份
+  enableClipboardMonitor?: boolean; // 是否启用剪贴板监控（整个剪贴板功能开关）
 }
 
 export interface ExportData {

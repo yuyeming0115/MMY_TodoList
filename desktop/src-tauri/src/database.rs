@@ -121,6 +121,12 @@ impl Database {
             [],
         ).ok();
 
+        // 添加 enable_clipboard_monitor 列
+        conn.execute(
+            "ALTER TABLE settings ADD COLUMN enable_clipboard_monitor INTEGER DEFAULT 1",
+            [],
+        ).ok();
+
         // 初始化默认设置
         conn.execute(
             "INSERT OR IGNORE INTO settings (id) VALUES (1)",
@@ -569,7 +575,7 @@ impl Database {
     pub fn get_settings(&self) -> SqliteResult<AppSettings> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT theme_mode, language, hide_completed_tasks, launch_at_startup, window_width, window_height, window_x, window_y, font_size, font_family, clipboard_view_mode, clipboard_stack_gap, task_view_mode, global_shortcut FROM settings WHERE id = 1",
+            "SELECT theme_mode, language, hide_completed_tasks, launch_at_startup, window_width, window_height, window_x, window_y, font_size, font_family, clipboard_view_mode, clipboard_stack_gap, task_view_mode, global_shortcut, enable_clipboard_monitor FROM settings WHERE id = 1",
             [],
             |row| Ok(AppSettings {
                 theme_mode: row.get(0)?,
@@ -586,6 +592,7 @@ impl Database {
                 clipboard_stack_gap: row.get::<_, i32>(11).unwrap_or(64),
                 task_view_mode: row.get(12).unwrap_or_else(|_| "normal".to_string()),
                 global_shortcut: row.get::<_, Option<String>>(13)?,
+                enable_clipboard_monitor: row.get::<_, Option<i32>>(14)?.map(|v| v != 0),
             }),
         )
     }
@@ -593,7 +600,7 @@ impl Database {
     pub fn update_settings(&self, settings: &AppSettings) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE settings SET theme_mode = ?1, language = ?2, hide_completed_tasks = ?3, launch_at_startup = ?4, window_width = ?5, window_height = ?6, window_x = ?7, window_y = ?8, font_size = ?9, font_family = ?10, clipboard_view_mode = ?11, clipboard_stack_gap = ?12, task_view_mode = ?13, global_shortcut = ?14 WHERE id = 1",
+            "UPDATE settings SET theme_mode = ?1, language = ?2, hide_completed_tasks = ?3, launch_at_startup = ?4, window_width = ?5, window_height = ?6, window_x = ?7, window_y = ?8, font_size = ?9, font_family = ?10, clipboard_view_mode = ?11, clipboard_stack_gap = ?12, task_view_mode = ?13, global_shortcut = ?14, enable_clipboard_monitor = ?15 WHERE id = 1",
             rusqlite::params![
                 &settings.theme_mode,
                 &settings.language,
@@ -609,6 +616,7 @@ impl Database {
                 &settings.clipboard_stack_gap,
                 &settings.task_view_mode,
                 &settings.global_shortcut,
+                &settings.enable_clipboard_monitor.map(|v| if v { 1 } else { 0 }),
             ],
         )?;
         Ok(())

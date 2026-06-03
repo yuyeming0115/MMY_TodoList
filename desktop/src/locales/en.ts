@@ -137,6 +137,9 @@ export default {
     shortcutRegistered: 'Shortcut registered successfully',
     shortcutFailed: 'Registration failed, shortcut may be occupied by system or other apps',
     shortcutHintFull: 'Common unavailable shortcuts: F1 (Help), Alt+F4 (Close), system reserved combos',
+    // Clipboard monitor
+    enableClipboardMonitor: 'Clipboard Monitor',
+    enableClipboardMonitorHint: 'Enable clipboard history feature (disable to reduce system resource usage)',
   },
   // 消息提示
   messages: {
