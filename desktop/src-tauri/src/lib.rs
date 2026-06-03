@@ -63,10 +63,15 @@ pub fn run() {
             // 启动定时备份任务
             backup_arc.start_periodic_backup(app.handle().clone());
 
-            // 启动剪贴板后台监控
+            // 启动剪贴板后台监控（根据设置决定是否启动）
             let monitor = ClipboardMonitor::new();
             let monitor_ref = &monitor;
-            monitor_ref.start(app.handle().clone(), db_arc.clone());
+            // 从设置读取是否启用剪贴板监控
+            let settings = db_arc.get_settings().unwrap_or_default();
+            let enable_clipboard_monitor = settings.enable_clipboard_monitor.unwrap_or(true);
+            if enable_clipboard_monitor {
+                monitor_ref.start(app.handle().clone(), db_arc.clone());
+            }
             app.manage(monitor);
 
             // 初始化全局快捷键（从设置读取）
@@ -194,6 +199,9 @@ pub fn run() {
             commands::restore_backup_with_options,
             // 系统托盘
             hide_to_tray,
+            // 剪贴板监控控制
+            start_clipboard_monitor_cmd,
+            stop_clipboard_monitor_cmd,
             // 工具命令
             find_pixpin_path,
             launch_pixpin,
@@ -222,6 +230,24 @@ fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
         win.hide().map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+/// 启动剪贴板监控
+#[tauri::command]
+fn start_clipboard_monitor_cmd(
+    app: tauri::AppHandle,
+    monitor: tauri::State<'_, ClipboardMonitor>,
+    db: tauri::State<'_, Arc<Database>>,
+) -> Result<(), String> {
+    monitor.start(app, db.inner().clone());
+    Ok(())
+}
+
+/// 停止剪贴板监控
+#[tauri::command]
+fn stop_clipboard_monitor_cmd(monitor: tauri::State<'_, ClipboardMonitor>) -> Result<(), String> {
+    monitor.stop();
     Ok(())
 }
 

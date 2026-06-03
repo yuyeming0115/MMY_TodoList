@@ -19,6 +19,7 @@ export const useSettingsStore = defineStore('settings', () => {
     customSortBackup: undefined,
     clipboardSortMode: 'custom',
     clipboardSortBackup: undefined,
+    enableClipboardMonitor: true, // 默认启用剪贴板监控
   });
 
   async function load() {
@@ -94,6 +95,18 @@ export const useSettingsStore = defineStore('settings', () => {
     update({ clipboardSortBackup: backup });
   }
 
+  function setEnableClipboardMonitor(enable: boolean) {
+    update({ enableClipboardMonitor: enable });
+    // 同步调用后端启动/停止剪贴板监控
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      if (enable) {
+        invoke('start_clipboard_monitor_cmd').catch(e => console.error('启动剪贴板监控失败:', e));
+      } else {
+        invoke('stop_clipboard_monitor_cmd').catch(e => console.error('停止剪贴板监控失败:', e));
+      }
+    });
+  }
+
   return {
     settings,
     load,
@@ -114,5 +127,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setCustomSortBackup,
     setClipboardSortMode,
     setClipboardSortBackup,
+    setEnableClipboardMonitor,
   };
 });

@@ -132,6 +132,13 @@ function handleClose() {
           @update:value="(v: boolean) => settingsStore.setLaunchAtStartup(v)"
         />
       </NFormItem>
+
+      <NFormItem label="剪贴板监控">
+        <NSwitch
+          :value="settingsStore.settings.enableClipboardMonitor ?? true"
+          @update:value="(v: boolean) => settingsStore.setEnableClipboardMonitor(v)"
+        />
+      </NFormItem>
     </NForm>
 
     <NDivider />

@@ -383,6 +383,21 @@ function goBack() {
         </div>
       </div>
 
+      <!-- 剪贴板监控开关 -->
+      <div class="settings-row" style="margin-top: 12px">
+        <div class="setting-item">
+          <span class="setting-label">{{ t('settings.enableClipboardMonitor') }}</span>
+          <NSwitch
+            :value="settingsStore.settings.enableClipboardMonitor ?? true"
+            @update:value="(v: boolean) => settingsStore.setEnableClipboardMonitor(v)"
+          />
+        </div>
+      </div>
+
+      <NText depth="3" style="font-size: 12px; margin-top: 4px; display: block">
+        {{ t('settings.enableClipboardMonitorHint') }}
+      </NText>
+
       <NDivider />
 
       <!-- 快捷键设置 -->

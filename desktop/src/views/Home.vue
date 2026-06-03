@@ -807,6 +807,7 @@ async function hideToTray() {
                   <NIcon :component="ListIcon" size="22" />
                 </button>
                 <button
+                  v-if="settingsStore.settings.enableClipboardMonitor ?? true"
                   :class="['sidebar-btn', { active: activePanel === 'clipboard' && currentPage === 'main' }]"
                   @click="switchPanel('clipboard')"
                   :title="t('sidebar.clipboard')"
