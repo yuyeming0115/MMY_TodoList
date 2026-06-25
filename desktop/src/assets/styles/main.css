@@ -1,16 +1,51 @@
-/* MMY Todo 全局样式 */
+/* MMY Todo 全局样式 - v2 重构 */
 
 :root {
-  /* 亮色主题 */
+  /* 基础色 */
+  --bg: #F5F5F0;
+  --sidebar-bg: rgba(245,245,245,0.96);
+  --card-bg: #FFFFFF;
+  --card-hover: #FAFAFA;
+  --text-primary: #1A1A1A;
+  --text-secondary: #888888;
+  --text-muted: #AAAAAA;
+  --accent: #4A90D9;
+  --accent-light: rgba(74,144,217,0.1);
+  --accent-hover: #5BA4F5;
+  --danger: #E05252;
+  --success: #28C840;
+  --warning: #FFB800;
+  --border: #E8E8E8;
+  --divider: rgba(0,0,0,0.08);
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+
+  /* 圆角 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* 优先级颜色 */
+  --p-high: #E05252;
+  --p-medium: #FF9800;
+  --p-low: transparent;
+
+  /* 计时器 */
+  --timer-active: #FF6B6B;
+  --timer-run: #FF6B6B;
+
+  /* 兼容旧变量 */
   --bg-light: #F5F5F0;
   --card-light: #FFFFFF;
   --text-light: #1A1A1A;
   --text-secondary-light: #888888;
-  --accent-light: #4A90D9;
+  --accent-light-color: #4A90D9;
   --danger-light: #E05252;
   --border-light: #E8E8E8;
-
-  /* 暗色主题 */
   --bg-dark: #1C1C1E;
   --card-dark: #2C2C2E;
   --text-dark: #F2F2F7;
@@ -18,6 +53,23 @@
   --accent-dark: #5BA4F5;
   --danger-dark: #FF6B6B;
   --border-dark: #3A3A3C;
+}
+
+html.dark {
+  --bg: #1a1a1a;
+  --sidebar-bg: rgba(28,28,30,0.96);
+  --card-bg: #2a2a2a;
+  --card-hover: #303030;
+  --text-primary: #f0f0f0;
+  --text-secondary: #888;
+  --text-muted: #555;
+  --accent: #5BA4F5;
+  --accent-light: rgba(91,164,245,0.15);
+  --border: #3a3a3a;
+  --divider: rgba(255,255,255,0.08);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
 }
 
 /* 自定义字体注册 */
@@ -32,7 +84,8 @@
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -40,16 +93,69 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 3px;
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.3s;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #666;
+:hover::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.12);
+}
+
+:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.2);
+}
+
+html.dark :hover::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+}
+
+html.dark :hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.25);
 }
 
 /* 拖拽区域 */
 [data-tauri-drag-region] {
   cursor: default;
   user-select: none;
+}
+
+/* 基础重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', Roboto, sans-serif;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+body {
+  overflow: hidden;
+}
+
+/* JetBrains Mono 备选 */
+.mono {
+  font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 动画 */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.7); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
