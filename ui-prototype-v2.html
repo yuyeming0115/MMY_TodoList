@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MMY TodoList - v2 原型（任务 + 计时器）</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #F5F5F0;
+    --sidebar-bg: rgba(245,245,245,0.96);
+    --card-bg: #FFFFFF;
+    --card-hover: #FAFAFA;
+    --text-primary: #1A1A1A;
+    --text-secondary: #888888;
+    --text-muted: #AAAAAA;
+    --accent: #4A90D9;
+    --accent-light: rgba(74,144,217,0.1);
+    --accent-hover: #5BA4F5;
+    --danger: #E05252;
+    --success: #28C840;
+    --warning: #FFB800;
+    --border: #E8E8E8;
+    --divider: rgba(0,0,0,0.08);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-full: 999px;
+    --p-high: #E05252;
+    --p-medium: #FF9800;
+    --p-low: #28C840;
+    --timer-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --timer-active: #FF6B6B;
+  }
+
+  .dark {
+    --bg: #1a1a1a;
+    --sidebar-bg: rgba(28,28,30,0.96);
+    --card-bg: #2a2a2a;
+    --card-hover: #303030;
+    --text-primary: #f0f0f0;
+    --text-secondary: #888;
+    --text-muted: #555;
+    --accent: #5BA4F5;
+    --accent-light: rgba(91,164,245,0.15);
+    --border: #3a3a3a;
+    --divider: rgba(255,255,255,0.08);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .app {
+    display: flex;
+    height: 100vh;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+    margin: 12px;
+    height: calc(100vh - 24px);
+  }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    width: 60px;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+    gap: 0;
+    backdrop-filter: blur(20px);
+    flex-shrink: 0;
+  }
+
+  /* Window controls area */
+  .win-ctrl {
+    display: flex;
+    gap: 6px;
+    padding: 4px 0 12px;
+    margin-bottom: 8px;
+  }
+  .win-ctrl .dot {
+    width: 11px; height: 11px; border-radius: 50%; cursor: pointer;
+    border: none; transition: transform 0.15s;
+  }
+  .win-ctrl .dot:hover { transform: scale(1.2); }
+  .win-ctrl .dot.close { background: #FF5F57; }
+  .win-ctrl .dot.min { background: #FFBD2E; }
+  .win-ctrl .dot.max { background: #28C840; }
+
+  .sidebar-divider {
+    width: 28px; height: 1px;
+    background: var(--divider);
+    margin: 6px 0;
+    flex-shrink: 0;
+  }
+
+  .sidebar-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .sidebar-btn {
+    width: 40px; height: 40px;
+    border: none; border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .sidebar-btn:hover {
+    background: rgba(0,0,0,0.06);
+    color: var(--text-primary);
+  }
+  .dark .sidebar-btn:hover { background: rgba(255,255,255,0.08); }
+  .sidebar-btn.active {
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+  .sidebar-btn .badge {
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 6px; height: 6px;
+    background: var(--timer-active);
+    border-radius: 50%;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+
+  .sidebar-spacer { flex: 1; }
+
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; transform:scale(1); }
+    50% { opacity:0.5; transform:scale(0.7); }
+  }
+
+  /* ===== MAIN ===== */
+  .main {
+    flex: 1; display: flex; flex-direction: column;
+    overflow: hidden; background: var(--bg); min-width: 0;
+    position: relative;
+  }
+
+  /* ===== TOP BAR ===== */
+  .topbar {
+    display: flex; align-items: center;
+    padding: 10px 16px 8px;
+    gap: 8px;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+  }
+
+  /* Category pills - new style */
+  .cat-pills {
+    display: flex; align-items: center; gap: 4px;
+    overflow-x: auto; scrollbar-width: none;
+    flex: 1; min-width: 0;
+    -webkit-app-region: no-drag;
+  }
+  .cat-pills::-webkit-scrollbar { display: none; }
+
+  .cat-pill {
+    padding: 5px 14px;
+    border: none; border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .cat-pill:hover { background: var(--accent-light); color: var(--accent); }
+  .cat-pill.active {
+    background: var(--accent); color: white;
+    box-shadow: 0 2px 8px rgba(74,144,217,0.3);
+  }
+  .cat-pill.add {
+    width: 28px; height: 28px; padding:0;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  .topbar-actions {
+    display: flex; align-items: center; gap: 4px;
+    flex-shrink: 0;
+    -webkit-app-region: no-drag;
+  }
+
+  .icon-btn {
+    width: 32px; height: 32px;
+    border: none; border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .icon-btn:hover { background: rgba(0,0,0,0.06); color: var(--accent); }
+  .dark .icon-btn:hover { background: rgba(255,255,255,0.08); }
+
+  /* ===== TOOLBAR ===== */
+  .toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 16px 10px;
+    flex-shrink: 0;
+  }
+
+  .btn-primary {
+    display: flex; align-items: center; gap: 5px;
+    padding: 7px 14px;
+    background: var(--accent); color: white;
+    border: none; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
+  .btn-primary:hover {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(74,144,217,0.3);
+  }
+
+  .search-box {
+    flex: 1; display: flex; align-items: center; gap: 7px;
+    padding: 7px 11px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    transition: all 0.15s;
+    min-width: 0;
+  }
+  .search-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+  .search-box svg { color: var(--text-muted); flex-shrink:0; }
+  .search-box input {
+    flex:1; border:none; background:transparent;
+    font-size: 13px; color: var(--text-primary);
+    outline: none; font-family: inherit; min-width:0;
+  }
+  .search-box input::placeholder { color: var(--text-muted); }
+
+  /* ===== CONTENT AREA ===== */
+  .content { flex:1; overflow-y:auto; overflow-x:hidden; padding:0 16px 80px; }
+  .content::-webkit-scrollbar { width: 4px; }
+  .content::-webkit-scrollbar-track { background: transparent; }
+  .content::-webkit-scrollbar-thumb { background: transparent; border-radius: 10px; }
+  .content:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+  .dark .content:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); }
+
+  /* ===== TASK CARD ===== */
+  .task-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-bottom: 6px;
+    display: flex; align-items: flex-start; gap: 10px;
+    transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
+    cursor: pointer; position: relative; overflow: hidden;
+  }
+  .task-card::before {
+    content:''; position:absolute; left:0; top:4px; bottom:4px;
+    width: 3px; border-radius: 0 3px 3px 0;
+    background: transparent; transition: background 0.2s;
+  }
+  .task-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); background: var(--card-hover); }
+  .task-card.p-high::before { background: var(--p-high); }
+  .task-card.p-medium::before { background: var(--p-medium); }
+  .task-card.p-low::before { background: transparent; }
+  .task-card.done { opacity: 0.45; }
+  .task-card.done .task-title { text-decoration: line-through; color: var(--text-muted); }
+  .task-card.expanded { }
+
+  .checkbox {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid var(--border);
+    flex-shrink: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; margin-top: 2px;
+    background: transparent; padding: 0;
+  }
+  .checkbox:hover { border-color: var(--success); background: rgba(40,200,64,0.1); }
+  .checkbox.checked { background: var(--success); border-color: var(--success); }
+  .checkbox svg { width:12px; height:12px; color:white; opacity:0; transform: scale(0.5); transition: all 0.2s; }
+  .checkbox.checked svg { opacity:1; transform: scale(1); }
+
+  .task-body { flex:1; min-width:0; }
+  .task-row {
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .task-title {
+    font-size: 14px; font-weight: 500; line-height: 1.5;
+    flex:1; word-break: break-word;
+  }
+  .task-title-input {
+    font-size: 14px; font-weight: 500; line-height: 1.5;
+    flex:1; background:transparent; border:none;
+    border-bottom: 2px solid var(--accent);
+    outline: none; font-family: inherit; padding:0; color: var(--text-primary);
+  }
+
+  .task-tags {
+    display: flex; align-items: center; gap: 4px;
+    flex-shrink: 0; opacity: 0.6; transition: opacity 0.15s;
+  }
+  .task-card:hover .task-tags { opacity: 1; }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 11px; color: var(--text-secondary);
+    padding: 1px 7px; border-radius: var(--radius-full);
+    background: rgba(0,0,0,0.04); white-space: nowrap;
+  }
+  .dark .tag { background: rgba(255,255,255,0.06); }
+  .tag.soon { background: rgba(224,82,82,0.1); color:var(--danger); font-weight:600; }
+  .tag.today { background: rgba(255,184,0,0.15); color:var(--warning); font-weight:600; animation: pulse-tag 2s infinite; }
+  .tag.ok { background: rgba(40,200,64,0.1); color:var(--success); }
+  .tag.overdue { background: rgba(224,82,82,0.15); color:var(--danger); font-weight:600; }
+  .tag.p-dot { width:7px; height:7px; border-radius:50%; padding:0; flex-shrink:0; }
+  .tag.p-dot.high { background: var(--p-high); }
+  .tag.p-dot.medium { background: var(--p-medium); }
+  .tag.p-dot.none { background: transparent; }
+
+  /* FAB - floating add button */
+  .fab {
+    position: absolute;
+    bottom: 50px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 4px 16px rgba(74,144,217,0.4);
+    transition: all 0.2s;
+    z-index: 100;
+  }
+  .fab:hover {
+    background: var(--accent-hover);
+    transform: scale(1.08) rotate(90deg);
+    box-shadow: 0 6px 20px rgba(74,144,217,0.5);
+  }
+  .fab.timer-fab {
+    background: var(--timer-active);
+    box-shadow: 0 4px 16px rgba(255,107,107,0.4);
+    bottom: 50px;
+    right: 20px;
+  }
+  .fab.timer-fab:hover {
+    background: #FF5252;
+    box-shadow: 0 6px 20px rgba(255,107,107,0.5);
+  }
+
+  @keyframes pulse-tag { 0%,100%{opacity:1;} 50%{opacity:0.6;} }
+
+  .task-ops {
+    display: flex; align-items: center; gap: 1px;
+    opacity: 0; transition: opacity 0.15s; flex-shrink:0;
+  }
+  .task-card:hover .task-ops { opacity:1; }
+
+  .op-btn {
+    width: 26px; height: 26px; border:none; border-radius:6px;
+    background: transparent; color: var(--text-muted);
+    cursor: pointer; display:flex; align-items:center; justify-content:center;
+    transition: all 0.15s; padding:0;
+  }
+  .op-btn:hover { background: rgba(0,0,0,0.06); color: var(--text-primary); }
+  .dark .op-btn:hover { background: rgba(255,255,255,0.08); }
+  .op-btn.del:hover { background: rgba(224,82,82,0.1); color: var(--danger); }
+  .op-btn.timer:hover { background: rgba(255,107,107,0.1); color: var(--timer-active); }
+
+  .expand-btn {
+    width: 18px; height: 18px; border:none; background:none;
+    color: var(--text-muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: transform 0.2s, color 0.15s;
+    flex-shrink:0; margin-top:3px;
+  }
+  .expand-btn:hover { color: var(--accent); }
+  .task-card.expanded .expand-btn { transform: rotate(180deg); }
+
+  .task-desc {
+    margin-top: 6px; font-size: 12px; color: var(--text-secondary);
+    line-height: 1.6; display: none;
+    padding: 8px 10px; background: rgba(0,0,0,0.02);
+    border-radius: var(--radius-sm); white-space: pre-wrap; word-break: break-word;
+  }
+  .dark .task-desc { background: rgba(255,255,255,0.03); }
+  .task-card.expanded .task-desc { display:block; }
+  .task-desc[contenteditable="true"] {
+    outline: none; border: 1px dashed var(--accent);
+    background: var(--accent-light);
+  }
+  .desc-hint {
+    margin-top: 4px; font-size: 12px; color: var(--text-muted);
+    cursor: pointer; display: none; padding: 4px 0;
+  }
+  .task-card.expanded .desc-hint { display:block; }
+  .desc-hint:hover { color: var(--accent); }
+
+  /* Task thumbnails */
+  .task-thumbs {
+    margin-top: 8px;
+    display: flex; gap: 6px;
+    flex-wrap: wrap;
+  }
+  .task-thumb {
+    width: 80px; height: 56px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .task-thumb:hover {
+    transform: scale(1.05);
+    box-shadow: var(--shadow-md);
+    z-index: 1;
+  }
+  .add-thumb {
+    width: 80px; height: 56px;
+    border-radius: var(--radius-sm);
+    border: 2px dashed var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    transition: all 0.15s;
+  }
+  .add-thumb:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+  }
+
+  /* Add task */
+  .add-inline {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--card-bg); border: 2px dashed var(--border);
+    border-radius: var(--radius-md); padding: 12px 14px;
+    margin-bottom: 6px; transition: all 0.2s;
+  }
+  .add-inline:focus-within { border-color: var(--accent); background: var(--accent-light); }
+  .add-inline .plus {
+    width: 20px; height: 20px; border-radius:50%;
+    border: 2px dashed var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); font-size: 12px; flex-shrink:0;
+  }
+  .add-inline input {
+    flex:1; border:none; background:transparent;
+    font-size: 14px; color: var(--text-primary);
+    outline: none; font-family: inherit;
+  }
+  .add-inline input::placeholder { color: var(--text-muted); }
+
+  .add-hint {
+    text-align:center; padding: 14px; color: var(--text-muted);
+    font-size: 12px; cursor: pointer; border-radius: var(--radius-md);
+    border: 2px dashed transparent; transition: all 0.15s;
+  }
+  .add-hint:hover { color: var(--accent); border-color: var(--border); background: var(--card-bg); }
+
+  /* ===== TIMER PANEL ===== */
+  .timer-panel {
+    display: flex; flex-direction: column;
+    gap: 14px; padding: 4px 0 16px;
+  }
+
+  /* Clock face area */
+  .timer-main {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 16px 18px;
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .timer-status {
+    font-size: 12px; color: var(--text-muted);
+    margin-bottom: 12px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .timer-status.running { color: var(--timer-active); }
+
+  /* SVG Clock */
+  .clock-wrap {
+    position: relative; width: 200px; height: 200px;
+    margin-bottom: 12px;
+  }
+  .clock-svg { width:100%; height:100%; transform: rotate(-90deg); }
+  .clock-track { fill: none; stroke: var(--border); stroke-width: 8; }
+  .dark .clock-track { stroke: #3a3a3a; }
+  .clock-progress {
+    fill: none; stroke: var(--accent); stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.5s ease;
+  }
+  .clock-progress.running { stroke: var(--timer-active); }
+  .clock-center {
+    position: absolute; inset:0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .clock-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 42px; font-weight: 600;
+    color: var(--text-primary); line-height: 1;
+    letter-spacing: -1px;
+  }
+  .clock-task-name {
+    font-size: 13px; color: var(--text-secondary);
+    margin-top: 6px; max-width: 160px;
+    text-align: center; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .clock-type-badge {
+    font-size: 10px; padding: 2px 8px;
+    border-radius: var(--radius-full);
+    margin-top: 4px; font-weight: 600;
+  }
+  .clock-type-badge.once { background: var(--accent-light); color: var(--accent); }
+  .clock-type-badge.loop { background: rgba(255,107,107,0.1); color: var(--timer-active); }
+
+  /* Timer controls */
+  .timer-ctrls {
+    display: flex; gap: 8px; margin-top: 8px;
+  }
+  .timer-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 8px 20px; border: none; border-radius: var(--radius-full);
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .timer-btn.start {
+    background: var(--timer-active); color: white;
+    box-shadow: 0 2px 8px rgba(255,107,107,0.3);
+  }
+  .timer-btn.start:hover { background: #FF5252; transform: scale(1.03); }
+  .timer-btn.pause {
+    background: var(--warning); color: white;
+  }
+  .timer-btn.reset {
+    background: rgba(0,0,0,0.06); color: var(--text-secondary);
+  }
+  .dark .timer-btn.reset { background: rgba(255,255,255,0.08); }
+  .timer-btn.reset:hover { background: rgba(0,0,0,0.1); color: var(--text-primary); }
+
+  /* Section titles */
+  .section-title {
+    font-size: 12px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 0 4px 8px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .section-title .link {
+    font-size: 11px; color: var(--accent);
+    cursor: pointer; text-transform: none; letter-spacing: 0;
+    font-weight: 500;
+  }
+
+  /* Recent tasks */
+  .recent-tasks {
+    display: flex; gap: 10px;
+    overflow-x: auto; padding: 6px 4px 8px;
+    margin: -6px -4px 0;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+  .recent-tasks::-webkit-scrollbar { display: none; }
+
+  .recent-card {
+    flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer; transition: all 0.15s;
+    width: 96px;
+  }
+  .recent-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  .recent-card .r-icon {
+    width: 48px; height: 48px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .recent-card .r-name {
+    font-size: 11px; color: var(--text-secondary);
+    text-align: center; width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    line-height: 1.3;
+  }
+  .recent-card .r-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+    line-height: 1;
+  }
+  .recent-card.add-new {
+    border-style: dashed;
+    justify-content: center;
+    min-height: 130px;
+  }
+  .recent-card.add-new .r-icon {
+    border: 2px dashed var(--border); background: transparent !important;
+    font-size: 20px; color: var(--text-muted);
+    border-radius: 50%; width: 44px; height: 44px;
+  }
+  .recent-card.add-new .r-name { color: var(--text-muted); }
+  .recent-card.add-new .r-time { display: none; }
+
+  /* Timer task list */
+  .timer-task-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .tt-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .tt-item:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+  .tt-item.running {
+    border-color: var(--timer-active);
+    background: rgba(255,107,107,0.04);
+  }
+
+  .tt-drag {
+    color: var(--text-muted); cursor: grab;
+    display: flex; align-items: center;
+    font-size: 14px;
+  }
+
+  .tt-color {
+    width: 4px; height: 24px; border-radius: 2px; flex-shrink: 0;
+  }
+
+  .tt-info { flex:1; min-width:0; }
+  .tt-name {
+    font-size: 13px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tt-meta {
+    font-size: 11px; color: var(--text-muted); margin-top: 2px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .tt-loop { color: var(--timer-active); }
+
+  .tt-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; font-weight: 600; color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .tt-item.running .tt-time { color: var(--timer-active); }
+
+  .tt-actions {
+    display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s;
+  }
+  .tt-item:hover .tt-actions { opacity: 1; }
+
+  /* Fixed reminders (饭点/下班) */
+  .fixed-reminders {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .fr-chip {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    font-size: 12px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .fr-chip:hover { border-color: var(--accent); }
+  .fr-chip.active {
+    background: var(--accent-light); border-color: var(--accent); color: var(--accent);
+  }
+  .fr-chip .fr-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600; font-size: 11px;
+  }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px; font-size: 11px; color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    background: var(--sidebar-bg);
+    flex-shrink: 0;
+  }
+  .stats-bar .sc { display: flex; gap: 14px; }
+  .stats-bar strong { color: var(--text-primary); font-weight: 600; }
+
+  /* Empty state */
+  .empty {
+    text-align: center; padding: 40px 20px; color: var(--text-muted);
+  }
+  .empty .e-icon { font-size: 40px; margin-bottom: 8px; opacity: 0.5; }
+  .empty p { font-size: 13px; }
+
+  /* Animations */
+  @keyframes slideIn { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform: translateY(0); } }
+  .task-card, .tt-item, .add-inline { animation: slideIn 0.2s ease-out; }
+
+  /* Prototype badge */
+  .badge-proto {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--accent); color: white;
+    padding: 7px 14px; border-radius: 20px;
+    font-size: 11px; font-weight: 500;
+    box-shadow: var(--shadow-md); z-index: 1000; opacity: 0.8;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body class="transition">
+
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <!-- Window controls (unified for both Mac/Win) -->
+    <div class="win-ctrl">
+      <button class="dot close" title="关闭"></button>
+      <button class="dot min" title="最小化"></button>
+      <button class="dot max" title="最大化"></button>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <!-- Module switch -->
+    <div class="sidebar-section">
+      <button class="sidebar-btn active" data-panel="tasks" title="任务" onclick="switchPanel('tasks')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      </button>
+      <button class="sidebar-btn" data-panel="timer" title="计时器" onclick="switchPanel('timer')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span class="badge" id="timerBadge" style="display:none;"></span>
+      </button>
+      <button class="sidebar-btn" data-panel="clipboard" title="剪贴板" onclick="switchPanel('clipboard')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+      </button>
+    </div>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-divider"></div>
+
+    <!-- Tools -->
+    <div class="sidebar-section">
+      <button class="sidebar-btn" title="置顶">📌</button>
+      <button class="sidebar-btn" title="精简模式">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </button>
+      <button class="sidebar-btn" title="切换主题" onclick="toggleTheme()">
+        <svg id="themeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+      <button class="sidebar-btn" title="语言">中</button>
+      <button class="sidebar-btn" title="设置">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- TASKS PANEL -->
+    <div id="panel-tasks">
+      <div class="topbar">
+        <div class="cat-pills" id="catPills">
+          <button class="cat-pill active" data-cat="all">全部</button>
+          <button class="cat-pill" data-cat="work">💼 工作</button>
+          <button class="cat-pill" data-cat="personal">🏠 个人</button>
+          <button class="cat-pill" data-cat="study">📚 学习</button>
+          <button class="cat-pill add" title="添加分类">+</button>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" title="视图切换">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          </button>
+          <button class="icon-btn" title="排序">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn-primary" onclick="showAddTask()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          添加任务
+        </button>
+        <div class="search-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="搜索任务..." id="searchInput" oninput="filterTasks(this.value)">
+        </div>
+      </div>
+
+      <div class="content" id="taskContent"></div>
+    </div>
+
+    <!-- TIMER PANEL -->
+    <div id="panel-timer" style="display:none; flex-direction:column; flex:1; min-height:0;">
+      <div class="topbar">
+        <div class="cat-pills">
+          <button class="cat-pill active">⏱️ 任务计时器</button>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" title="统计" onclick="alert('数据统计 & HTML导出\\n（原型中未实现，实际版本将提供按日/周统计常规任务时长，支持HTML导出）')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          </button>
+          <button class="icon-btn" title="设置">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6m-9-11h6m10 0h6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="search-box" style="max-width:200px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="搜索计时任务...">
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="timer-panel">
+          <!-- Clock face -->
+          <div class="timer-main">
+            <div class="timer-status" id="timerStatus">准备开始</div>
+            <div class="clock-wrap">
+              <svg class="clock-svg" viewBox="0 0 200 200">
+                <circle class="clock-track" cx="100" cy="100" r="90"/>
+                <circle class="clock-progress" id="clockProgress" cx="100" cy="100" r="90"
+                  stroke-dasharray="565.48" stroke-dashoffset="0"/>
+              </svg>
+              <div class="clock-center">
+                <div class="clock-time" id="clockTime">30:00</div>
+                <div class="clock-task-name" id="clockTaskName">选择一个任务开始</div>
+                <div class="clock-type-badge once" id="clockType">常规</div>
+              </div>
+            </div>
+            <div class="timer-ctrls">
+              <button class="timer-btn start" id="timerMainBtn" onclick="toggleTimer()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                开始
+              </button>
+              <button class="timer-btn reset" onclick="resetTimer()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                重置
+              </button>
+            </div>
+          </div>
+
+          <!-- Fixed time reminders -->
+          <div class="section-title">⏰ 固定提醒</div>
+          <div class="fixed-reminders">
+            <div class="fr-chip" onclick="this.classList.toggle('active')">🍚 <span class="fr-time">12:00</span> 午饭</div>
+            <div class="fr-chip" onclick="this.classList.toggle('active')">🍚 <span class="fr-time">18:00</span> 晚饭</div>
+            <div class="fr-chip active" onclick="this.classList.toggle('active')">🏠 <span class="fr-time">18:30</span> 下班打卡</div>
+            <div class="fr-chip" onclick="this.classList.toggle('active')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              添加
+            </div>
+          </div>
+
+          <!-- Recent / Quick start -->
+          <div class="section-title">
+            🚀 快速启动
+            <span class="link">全部任务 →</span>
+          </div>
+          <div class="recent-tasks">
+            <div class="recent-card" onclick="startTimerTask(1)">
+              <div class="r-icon" style="background:rgba(255,107,107,0.1);">💼</div>
+              <div class="r-time">30:00</div>
+              <div class="r-name">专注工作</div>
+            </div>
+            <div class="recent-card" onclick="startTimerTask(2)">
+              <div class="r-icon" style="background:rgba(74,144,217,0.1);">🤖</div>
+              <div class="r-time">3:00</div>
+              <div class="r-name">AI跟踪</div>
+            </div>
+            <div class="recent-card" onclick="startTimerTask(3)">
+              <div class="r-icon" style="background:rgba(40,200,64,0.1);">☕</div>
+              <div class="r-time">5:00</div>
+              <div class="r-name">休息</div>
+            </div>
+            <div class="recent-card" onclick="startTimerTask(4)">
+              <div class="r-icon" style="background:rgba(255,184,0,0.1);">📦</div>
+              <div class="r-time">5:00</div>
+              <div class="r-name">外包检查</div>
+            </div>
+            <div class="recent-card add-new" onclick="alert('新建计时任务')">
+              <div class="r-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </div>
+              <div class="r-name">新建</div>
+            </div>
+          </div>
+
+          <!-- All timer tasks -->
+          <div class="section-title">
+            📋 全部计时任务
+            <span class="link">管理 →</span>
+          </div>
+          <div class="timer-task-list" id="timerTaskList">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLIPBOARD PANEL (placeholder) -->
+    <div id="panel-clipboard" style="display:none;">
+      <div class="content">
+        <div class="empty">
+          <div class="e-icon">📋</div>
+          <p>剪贴板面板<br><span style="font-size:11px;">（原型中暂未展示，布局结构与任务面板一致）</span></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="stats-bar" id="statsBar">
+      <div class="sc">
+        <span>待办 <strong id="statTodo">0</strong></span>
+        <span>已完成 <strong id="statDone">0</strong></span>
+      </div>
+      <span id="statsHint">点击卡片展开 · 双击编辑</span>
+    </div>
+
+    <!-- FAB buttons -->
+    <button class="fab" id="fabAdd" onclick="fabAction()" title="添加任务">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+  </main>
+</div>
+
+<div class="badge-proto">🔮 v2 原型 - 新布局 + 计时器</div>
+
+<script>
+// ======================== DATA ========================
+let tasks = [
+  { id:1, title:'完成项目重构方案设计文档', desc:'1、梳理现有代码结构\n2、设计新的组件拆分方案\n3、确定数据流和状态管理策略\n4、制定迁移计划', done:false, priority:'high', category:'work', categoryName:'工作', categoryColor:'#4A90D9', dueDate:today(0), expanded:false, thumbnails:[
+    { type:'emoji', emoji:'📐', bg:'#E3F2FD' },
+    { type:'emoji', emoji:'📊', bg:'#FFF3E0' }
+  ]},
+  { id:2, title:'买牛奶和面包', desc:'', done:false, priority:'medium', category:'personal', categoryName:'个人', categoryColor:'#28C840', dueDate:today(1), expanded:false, thumbnails:[] },
+  { id:3, title:'阅读《Vue3设计与实现》第5章', desc:'重点理解响应式系统的实现原理', done:false, priority:'low', category:'study', categoryName:'学习', categoryColor:'#9C27B0', dueDate:today(5), expanded:false, thumbnails:[
+    { type:'emoji', emoji:'📘', bg:'#F3E5F5' }
+  ]},
+  { id:4, title:'修复任务卡拖拽排序的bug', desc:'拖拽时卡片位置计算不准确', done:true, priority:'high', category:'work', categoryName:'工作', categoryColor:'#4A90D9', dueDate:today(-2), expanded:false, thumbnails:[] },
+  { id:5, title:'周末去健身房', desc:'', done:false, priority:'low', category:'personal', categoryName:'个人', categoryColor:'#28C840', dueDate:today(3), expanded:false, thumbnails:[] },
+  { id:6, title:'整理桌面文件', desc:'下载文件夹按项目分类整理', done:false, priority:'medium', category:'work', categoryName:'工作', categoryColor:'#4A90D9', dueDate:null, expanded:false, thumbnails:[
+    { type:'emoji', emoji:'🗂️', bg:'#E8F5E9' },
+    { type:'emoji', emoji:'💻', bg:'#E3F2FD' },
+    { type:'add' }
+  ]},
+];
+let nextTaskId = 7;
+let currentCat = 'all';
+let searchQ = '';
+let isDark = false;
+
+let timerTasks = [
+  { id:1, name:'专注工作', duration:30, type:'once', color:'#FF6B6B', icon:'💼', running:false },
+  { id:2, name:'AI跟踪', duration:3, type:'loop', color:'#4A90D9', icon:'🤖', running:false },
+  { id:3, name:'短休息', duration:5, type:'once', color:'#28C840', icon:'☕', running:false },
+  { id:4, name:'外包检查', duration:5, type:'once', color:'#FFB800', icon:'📦', running:false },
+  { id:5, name:'长休息', duration:15, type:'once', color:'#9C27B0', icon:'🧘', running:false },
+  { id:6, name:'番茄钟', duration:25, type:'once', color:'#E05252', icon:'🍅', running:false },
+];
+let currentTimer = null;
+let timerRunning = false;
+let timerRemaining = 0;
+let timerInterval = null;
+
+function today(offset) {
+  const d = new Date(); d.setDate(d.getDate()+offset); return d.getTime();
+}
+function dueInfo(ts) {
+  if (!ts) return null;
+  const today0 = new Date(); today0.setHours(0,0,0,0);
+  const d = new Date(ts); d.setHours(0,0,0,0);
+  const diff = Math.round((d-today0)/86400000);
+  if (diff<0) return { text:`逾期${-diff}天`, cls:'overdue' };
+  if (diff===0) return { text:'今天', cls:'today' };
+  if (diff===1) return { text:'明天', cls:'soon' };
+  if (diff<=3) return { text:`${diff}天`, cls:'soon' };
+  return { text:`${diff}天`, cls:'ok' };
+}
+function fmtTime(sec) {
+  const m = Math.floor(sec/60), s = sec%60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ======================== TASKS PANEL ========================
+function filteredTasks() {
+  let t = tasks;
+  if (currentCat!=='all') t = t.filter(x=>x.category===currentCat);
+  if (searchQ) { const q=searchQ.toLowerCase(); t=t.filter(x=>x.title.toLowerCase().includes(q)||(x.desc&&x.desc.toLowerCase().includes(q))); }
+  return t;
+}
+
+function renderTasks() {
+  const el = document.getElementById('taskContent');
+  const list = filteredTasks();
+  if (!list.length) {
+    el.innerHTML = `<div class="empty"><div class="e-icon">📝</div><p>${searchQ?'没有找到匹配的任务':'还没有任务，点击右下角 ➕ 添加'}</p></div>`;
+  } else {
+    el.innerHTML = list.map(renderTaskCard).join('');
+  }
+  const done = list.filter(t=>t.done).length;
+  document.getElementById('statTodo').textContent = list.length - done;
+  document.getElementById('statDone').textContent = done;
+}
+
+function renderTaskCard(t) {
+  const di = dueInfo(t.dueDate);
+  const pDotClass = t.priority === 'high' ? 'high' : t.priority === 'medium' ? 'medium' : 'none';
+  const pDot = `<span class="tag p-dot ${pDotClass}"></span>`;
+  const dueTag = di ? `<span class="tag ${di.cls}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${di.text}</span>` : '';
+  const catTag = currentCat==='all' ? `<span class="tag" style="border-left:3px solid ${t.categoryColor};padding-left:5px;">${t.categoryName}</span>` : '';
+  const hasThumbs = (t.thumbnails||[]).length > 0;
+  const attachTag = hasThumbs ? `<span class="tag">📎 ${t.thumbnails.filter(th=>th.type!=='add').length}</span>` : '';
+  const descHtml = t.desc ? `<div class="task-desc" ondblclick="editDesc(event,${t.id})">${esc(t.desc)}</div>` : `<div class="desc-hint" onclick="editDesc(event,${t.id})">点击添加描述...</div>`;
+  const thumbsArr = (t.thumbnails||[]);
+  const showAddBtn = t.expanded && !thumbsArr.find(th=>th.type==='add');
+  const thumbsHtml = t.expanded ? `
+    <div class="task-thumbs">
+      ${thumbsArr.filter(th=>th.type!=='add').map(th => {
+        if(th.type === 'emoji') return `<div class="task-thumb" style="background:${th.bg};display:flex;align-items:center;justify-content:center;font-size:28px;" onclick="event.stopPropagation()">${th.emoji}</div>`;
+        return `<img class="task-thumb" src="${th.src}" onclick="event.stopPropagation()" alt="">`;
+      }).join('')}
+      ${showAddBtn ? `<button class="add-thumb" onclick="event.stopPropagation();alert('添加截图/图片')" title="添加图片">+</button>` : ''}
+      ${thumbsArr.filter(th=>th.type!=='add').length===0 ? `<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">暂无图片，点击 + 添加</div>` : ''}
+    </div>` : '';
+  const canExpand = t.desc || hasThumbs;
+  return `
+    <div class="task-card ${t.done?'done':''} p-${t.priority} ${t.expanded?'expanded':''}" data-id="${t.id}" onclick="toggleExpand(${t.id})">
+      <button class="checkbox ${t.done?'checked':''}" onclick="event.stopPropagation();toggleDone(${t.id})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </button>
+      <div class="task-body">
+        <div class="task-row">
+          <span class="task-title" ondblclick="editTitle(event,${t.id})">${esc(t.title)}</span>
+          <div class="task-tags">${pDot}${catTag}${dueTag}${attachTag}</div>
+          <div class="task-ops">
+            <button class="op-btn timer" title="开始计时" onclick="event.stopPropagation();startTimerForTask(${t.id})">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </button>
+            <button class="op-btn" title="编辑" onclick="event.stopPropagation();editTitle(event,${t.id})">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="op-btn del" title="删除" onclick="event.stopPropagation();delTask(${t.id})">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+          ${canExpand?`<button class="expand-btn" onclick="event.stopPropagation();toggleExpand(${t.id})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>`:''}
+        </div>
+        ${t.expanded ? descHtml + thumbsHtml : ''}
+      </div>
+    </div>`;
+}
+
+function toggleDone(id){const t=tasks.find(x=>x.id===id);if(t){t.done=!t.done;renderTasks();}}
+function toggleExpand(id){const t=tasks.find(x=>x.id===id);if(t){t.expanded=!t.expanded;renderTasks();}}
+function delTask(id){tasks=tasks.filter(x=>x.id!==id);renderTasks();}
+function filterTasks(q){searchQ=q;renderTasks();}
+
+function editTitle(e,id){
+  e.stopPropagation();
+  const t=tasks.find(x=>x.id===id);if(!t)return;
+  const card=document.querySelector(`.task-card[data-id="${id}"]`);
+  const span=card.querySelector('.task-title');
+  const inp=document.createElement('input');
+  inp.type='text';inp.className='task-title-input';inp.value=t.title;
+  inp.onclick=ev=>ev.stopPropagation();
+  const save=()=>{const v=inp.value.trim();if(v)t.title=v;renderTasks();};
+  inp.onblur=save;
+  inp.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();save();}if(ev.key==='Escape')renderTasks();ev.stopPropagation();};
+  span.replaceWith(inp);inp.focus();inp.select();
+}
+
+function editDesc(e,id){
+  e.stopPropagation();
+  const t=tasks.find(x=>x.id===id);if(!t)return;
+  const card=document.querySelector(`.task-card[data-id="${id}"]`);
+  t.expanded=true;
+  setTimeout(()=>{
+    const de=card.querySelector('.task-desc'), ph=card.querySelector('.desc-hint');
+    const target=de||ph;if(!target)return;
+    const div=document.createElement('div');
+    div.className='task-desc';div.contentEditable='true';div.textContent=t.desc||'';
+    div.onclick=ev=>ev.stopPropagation();
+    const save=()=>{t.desc=div.textContent.trim();renderTasks();};
+    div.onblur=save;
+    div.onkeydown=ev=>{if(ev.key==='Escape')renderTasks();ev.stopPropagation();};
+    target.replaceWith(div);div.focus();
+    const r=document.createRange();r.selectNodeContents(div);r.collapse(false);
+    const s=window.getSelection();s.removeAllRanges();s.addRange(r);
+  },50);
+}
+
+function showAddTask(){
+  const el=document.getElementById('taskContent');
+  if(el.querySelector('#addForm')) return;
+  el.insertAdjacentHTML('afterbegin',`<div class="add-inline" id="addForm"><div class="plus">+</div><input type="text" placeholder="输入任务标题，回车添加..." id="newInp" autocomplete="off"></div>`);
+  const inp=document.getElementById('newInp');
+  setTimeout(()=>inp.focus(),10);
+  inp.onkeydown=e=>{
+    if(e.key==='Enter'){
+      const v=inp.value.trim();
+      if(v){
+        const catMap={work:{n:'工作',c:'#4A90D9'},personal:{n:'个人',c:'#28C840'},study:{n:'学习',c:'#9C27B0'},all:{n:'工作',c:'#4A90D9'}};
+        const cm=catMap[currentCat]||catMap.work;
+        tasks.unshift({id:nextTaskId++,title:v,desc:'',done:false,priority:'low',category:currentCat==='all'?'work':currentCat,categoryName:cm.n,categoryColor:cm.c,dueDate:null,expanded:false});
+      }
+      renderTasks();
+    }
+    if(e.key==='Escape')renderTasks();
+    e.stopPropagation();
+  };
+  inp.onblur=()=>setTimeout(()=>renderTasks(),150);
+}
+
+// Category pills
+document.getElementById('catPills').addEventListener('click',e=>{
+  const pill=e.target.closest('.cat-pill');
+  if(!pill||pill.classList.contains('add')){if(pill)alert('添加分类（原型未实现）');return;}
+  document.querySelectorAll('#catPills .cat-pill').forEach(p=>p.classList.remove('active'));
+  pill.classList.add('active');
+  currentCat=pill.dataset.cat;renderTasks();
+});
+
+// ======================== TIMER PANEL ========================
+function renderTimerTasks(){
+  const el=document.getElementById('timerTaskList');
+  el.innerHTML=timerTasks.map(t=>{
+    const mins=String(Math.floor(t.duration/60)).padStart(2,'0');
+    const secs=String(t.duration%60).padStart(2,'0');
+    const typeLabel = t.type==='loop' ? '<span class="tt-loop">🔄 循环</span>' : '常规';
+    return `
+      <div class="tt-item ${t.running?'running':''}" data-ttid="${t.id}" onclick="startTimerTask(${t.id})">
+        <span class="tt-drag">⋮⋮</span>
+        <span class="tt-color" style="background:${t.color}"></span>
+        <div class="tt-info">
+          <div class="tt-name">${t.icon} ${esc(t.name)}</div>
+          <div class="tt-meta">${typeLabel}</div>
+        </div>
+        <span class="tt-time">${mins}:${secs}</span>
+        <div class="tt-actions">
+          <button class="op-btn" onclick="event.stopPropagation();alert('编辑任务')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function startTimerTask(id){
+  const t=timerTasks.find(x=>x.id===id);if(!t)return;
+  timerTasks.forEach(x=>x.running=false);
+  t.running=true;
+  currentTimer=t;
+  timerRemaining=t.duration*60;
+  timerRunning=false;
+  updateClockDisplay();
+  renderTimerTasks();
+  document.getElementById('clockTaskName').textContent=t.name;
+  document.getElementById('clockType').textContent=t.type==='loop'?'循环':'常规';
+  document.getElementById('clockType').className=`clock-type-badge ${t.type}`;
+  document.getElementById('timerStatus').textContent='已选择，点击开始';
+  document.getElementById('timerStatus').className='timer-status';
+  document.getElementById('timerMainBtn').innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> 开始`;
+  document.getElementById('timerMainBtn').className='timer-btn start';
+}
+
+function startTimerForTask(taskId){
+  switchPanel('timer');
+  const t=tasks.find(x=>x.id===taskId);
+  document.getElementById('clockTaskName').textContent=t?t.title:'任务计时';
+  document.getElementById('clockType').textContent='常规';
+  document.getElementById('clockType').className='clock-type-badge once';
+  timerRemaining=30*60;
+  currentTimer={id:0,name:t?t.title:'任务',duration:30,type:'once',color:'#FF6B6B'};
+  updateClockDisplay();
+}
+
+function toggleTimer(){
+  if(!currentTimer){
+    if(timerTasks.length)startTimerTask(timerTasks[0].id);
+    return;
+  }
+  timerRunning=!timerRunning;
+  const btn=document.getElementById('timerMainBtn');
+  const status=document.getElementById('timerStatus');
+  const badge=document.getElementById('timerBadge');
+  if(timerRunning){
+    btn.innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 暂停`;
+    btn.className='timer-btn pause';
+    status.textContent='计时中...';
+    status.className='timer-status running';
+    badge.style.display='block';
+    timerInterval=setInterval(()=>{
+      timerRemaining--;
+      if(timerRemaining<=0){
+        timerRemaining=0;
+        clearInterval(timerInterval);
+        timerRunning=false;
+        onTimerFinish();
+      }
+      updateClockDisplay();
+    },1000);
+  } else {
+    btn.innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> 继续`;
+    btn.className='timer-btn start';
+    status.textContent='已暂停';
+    status.className='timer-status';
+    clearInterval(timerInterval);
+  }
+  updateClockDisplay();
+}
+
+function resetTimer(){
+  clearInterval(timerInterval);
+  timerRunning=false;
+  if(currentTimer){
+    timerRemaining=currentTimer.duration*60;
+  }
+  document.getElementById('timerMainBtn').innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> 开始`;
+  document.getElementById('timerMainBtn').className='timer-btn start';
+  document.getElementById('timerStatus').textContent='准备开始';
+  document.getElementById('timerStatus').className='timer-status';
+  document.getElementById('timerBadge').style.display='none';
+  updateClockDisplay();
+}
+
+function onTimerFinish(){
+  const btn=document.getElementById('timerMainBtn');
+  const status=document.getElementById('timerStatus');
+  btn.innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> 开始`;
+  btn.className='timer-btn start';
+  if(currentTimer && currentTimer.type==='loop'){
+    status.textContent='⏰ 时间到！循环任务将自动重启';
+    status.className='timer-status running';
+    badge.style.display='block';
+    setTimeout(()=>{
+      timerRemaining=currentTimer.duration*60;
+      timerRunning=true;
+      btn.innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 暂停`;
+      btn.className='timer-btn pause';
+      timerInterval=setInterval(()=>{
+        timerRemaining--;
+        if(timerRemaining<=0){
+          clearInterval(timerInterval);
+          timerRunning=false;
+          onTimerFinish();
+        }
+        updateClockDisplay();
+      },1000);
+      updateClockDisplay();
+    },2000);
+  } else {
+    status.textContent='✅ 完成！';
+    status.className='timer-status';
+    badge.style.display='none';
+    timerTasks.forEach(x=>x.running=false);
+    renderTimerTasks();
+  }
+}
+
+function updateClockDisplay(){
+  document.getElementById('clockTime').textContent=fmtTime(Math.max(0,timerRemaining));
+  const progress=document.getElementById('clockProgress');
+  const total=currentTimer?currentTimer.duration*60:1800;
+  const pct=Math.max(0,Math.min(1,timerRemaining/total));
+  const circ=2*Math.PI*90;
+  progress.style.strokeDashoffset=circ*(1-pct);
+  progress.classList.toggle('running',timerRunning);
+}
+
+// ======================== PANEL SWITCH ========================
+let currentPanel = 'tasks';
+
+function switchPanel(panel){
+  currentPanel = panel;
+  document.querySelectorAll('[id^="panel-"]').forEach(p=>p.style.display='none');
+  document.getElementById(`panel-${panel}`).style.display=panel==='timer'?'flex':'block';
+  document.querySelectorAll('.sidebar-btn[data-panel]').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.sidebar-btn[data-panel="${panel}"]`).classList.add('active');
+  const fab=document.getElementById('fabAdd');
+  const hint=document.getElementById('statsHint');
+  if(panel==='timer'){
+    hint.textContent='点击快速启动卡片开始计时';
+    fab.classList.add('timer-fab');
+    fab.title='添加计时任务';
+  } else if(panel==='clipboard'){
+    hint.textContent='剪贴板面板';
+    fab.classList.remove('timer-fab');
+    fab.title='添加剪贴项';
+  } else {
+    hint.textContent='点击卡片展开 · 双击编辑';
+    fab.classList.remove('timer-fab');
+    fab.title='添加任务';
+  }
+}
+
+function fabAction(){
+  if(currentPanel==='tasks'){
+    showAddTask();
+  } else if(currentPanel==='timer'){
+    alert('新建计时任务\n（原型中弹出表单，实际版本将弹出创建计时任务对话框）');
+  } else {
+    alert('添加剪贴项');
+  }
+}
+
+function toggleTheme(){
+  isDark=!isDark;
+  document.body.classList.toggle('dark',isDark);
+  document.getElementById('themeIcon').innerHTML=isDark
+    ?'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
+    :'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+}
+
+// Init
+renderTasks();
+renderTimerTasks();
+updateClockDisplay();
+</script>
+</body>
+</html>

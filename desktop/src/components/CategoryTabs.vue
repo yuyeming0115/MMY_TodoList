@@ -313,13 +313,14 @@ onUnmounted(() => {
 .category-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-app-region: no-drag;
   app-region: no-drag;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  padding: 6px 0;
 }
 
 .category-tabs::-webkit-scrollbar {
@@ -328,79 +329,86 @@ onUnmounted(() => {
 
 .draggable-tabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 
 .tab-btn {
-  padding: 4px 12px;
-  border: none;
-  border-radius: 4px;
+  padding: 5px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
   background: transparent;
-  color: #ccc;
+  color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition: all 0.15s;
   user-select: none;
   -webkit-app-region: no-drag;
   app-region: no-drag;
   display: flex;
   align-items: center;
+  height: 28px;
 }
 
 .tab-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+}
+
+html.dark .tab-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .tab-btn.active {
-  color: #4A90D9;
-  border-bottom: 2px solid #4A90D9;
-  border-radius: 4px 4px 0 0;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 500;
+  border-color: transparent;
 }
 
 .all-tab.active {
-  background: rgba(74, 144, 217, 0.2);
-  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
 }
 
 .add-tab-btn {
-  padding: 4px 8px;
-  font-size: 12px;
-  opacity: 0.6;
+  padding: 5px 10px;
+  font-size: 14px;
+  opacity: 0.5;
+  border-radius: var(--radius-full);
+  border: 1px dashed var(--border);
+  background: transparent;
 }
 
 .add-tab-btn:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .add-tab-btn:disabled {
-  opacity: 0.3;
+  opacity: 0.25;
   cursor: not-allowed;
 }
 
 .tab-edit-input {
-  background: transparent;
-  border: 1px solid #4A90D9;
-  border-radius: 4px;
-  padding: 0 4px;
-  font-size: 14px;
-  color: #fff;
+  background: var(--card-bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  font-size: 13px;
+  color: var(--text-primary);
   outline: none;
-  width: 80px;
+  width: 70px;
   font-family: inherit;
-}
-
-html.dark .tab-edit-input {
-  color: #e0e0e0;
-  background: #2a2a2a;
 }
 
 /* 拖拽样式 */
 .ghost-tab {
   opacity: 0.3;
-  background: rgba(74, 144, 217, 0.1);
-  border-radius: 4px;
+  background: var(--accent-light);
+  border-radius: var(--radius-full);
 }
 
 .chosen-tab {
@@ -410,9 +418,9 @@ html.dark .tab-edit-input {
 
 .dragging-tab {
   opacity: 1;
-  box-shadow: 0 4px 12px rgba(74, 144, 217, 0.3);
-  background: rgba(74, 144, 217, 0.15);
-  border-radius: 4px;
+  box-shadow: var(--shadow-md);
+  background: var(--accent-light);
+  border-radius: var(--radius-full);
 }
 
 .draggable-tabs.is-dragging .tab-btn:hover {

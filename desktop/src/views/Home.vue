@@ -12,7 +12,7 @@ import {
   FlashOutline as CompactIcon,
   ListOutline as ListIcon, ClipboardOutline as ClipboardIcon,
   CopyOutline as CopyIcon, LayersOutline as StackedIcon,
-  SwapVerticalOutline as SortIcon,
+  SwapVerticalOutline as SortIcon, TimeOutline as TimerIcon,
   CreateOutline as EditIcon, TrashOutline as DeleteIcon, LockClosedOutline as LockIcon
 } from '@vicons/ionicons5';
 import { h } from 'vue';
@@ -24,6 +24,7 @@ import { useCategoryStore } from '../stores/categoryStore';
 import { useTaskStore } from '../stores/taskStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useClipboardStore } from '../stores/clipboardStore';
+import { useTimerStore } from '../stores/timerStore';
 import { useI18n } from '../composables/useI18n';
 import CategoryTabs from '../components/CategoryTabs.vue';
 import ClipboardCategoryTabs from '../components/ClipboardCategoryTabs.vue';
@@ -32,11 +33,10 @@ import SettingsPage from '../components/SettingsPage.vue';
 import SearchBar from '../components/SearchBar.vue';
 import TaskCard from '../components/TaskCard.vue';
 import TaskFormModal from '../components/TaskFormModal.vue';
+import TimerPanel from '../components/TimerPanel.vue';
+import FloatingButton from '../components/FloatingButton.vue';
 import type { Task, ClipboardCategory } from '../types';
 import { isBuiltinClipboardCategory } from '../types';
-
-// 检测是否为 Windows
-const isWindows = navigator.userAgent.toLowerCase().includes('windows');
 
 // 检测是否为 Mac
 const isMac = /mac/i.test(navigator.userAgent);
@@ -86,6 +86,7 @@ const categoryStore = useCategoryStore();
 const taskStore = useTaskStore();
 const settingsStore = useSettingsStore();
 const clipboardStore = useClipboardStore();
+const timerStore = useTimerStore();
 const appWindow = getCurrentWindow();
 const message = useMessage();
 const dialog = useDialog();
@@ -171,12 +172,19 @@ const preCompactSize = ref<{ width: number; height: number } | null>(null);
 const COMPACT_WIDTH = 400;
 
 // 面板切换
-const activePanel = ref<'tasks' | 'clipboard'>('tasks');
+const activePanel = ref<'tasks' | 'timer' | 'clipboard'>('tasks');
 
-async function switchPanel(panel: 'tasks' | 'clipboard') {
+async function switchPanel(panel: 'tasks' | 'timer' | 'clipboard') {
   // 如果在设置页面，先退出设置页面
   if (currentPage.value === 'settings') {
     currentPage.value = 'main';
+  }
+  // 如果是精简模式且切换到timer，先退出精简模式
+  if (panel === 'timer' && isCompactMode.value) {
+    isCompactMode.value = false;
+    if (preCompactSize.value) {
+      try { await appWindow.setSize(new LogicalSize(preCompactSize.value.width, preCompactSize.value.height)); } catch (_) {}
+    }
   }
   activePanel.value = panel;
   if (panel === 'clipboard') {
@@ -743,29 +751,6 @@ async function hideToTray() {
 
 <template>
   <div class="app-layout">
-    <!-- Windows 端：全局 Header -->
-    <div v-if="isWindows" class="global-header" @mousedown="startWindowDrag">
-      <div class="header">
-        <div class="window-controls win-controls">
-          <NButton quaternary size="tiny" class="win-btn" @click="appWindow.minimize()">
-            <template #icon>
-              <NIcon :component="MinusIcon" :size="12" />
-            </template>
-          </NButton>
-          <NButton quaternary size="tiny" class="win-btn" @click="toggleMaximize()">
-            <template #icon>
-              <NIcon :component="isMaximized ? RestoreIcon : MaximizeIcon" :size="12" />
-            </template>
-          </NButton>
-          <NButton quaternary size="tiny" class="win-btn close-btn" @click="hideToTray()">
-            <template #icon>
-              <NIcon :component="CloseIcon" :size="12" />
-            </template>
-          </NButton>
-        </div>
-      </div>
-    </div>
-
     <!-- 精简模式下剪贴板操作栏 -->
     <div v-if="isCompactMode && activePanel === 'clipboard'" class="compact-clipboard-actions">
       <button class="view-toggle-btn compact" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
@@ -777,354 +762,449 @@ async function hideToTray() {
     <div class="body-area">
       <!-- 侧边栏 -->
       <nav class="sidebar" @mousedown="startWindowDrag">
-        <!-- Mac 端：红黄绿按钮 -->
-        <div v-if="isMac" class="mac-window-controls">
-          <button class="mac-btn close" @click.stop="hideToTray()" title="关闭">
-            <span class="mac-btn-icon">×</span>
-          </button>
-          <button class="mac-btn minimize" @click.stop="appWindow.minimize()" title="最小化">
-            <span class="mac-btn-icon">−</span>
-          </button>
-          <button class="mac-btn maximize" @click.stop="toggleMaximize()" :title="isMaximized ? '还原' : '最大化'">
-            <span class="mac-btn-icon">⧉</span>
-          </button>
-        </div>
-
-        <div class="sidebar-buttons">
-          <!-- 置顶按钮（第一个位置） -->
-                <button
-                  :class="['sidebar-btn', { active: isAlwaysOnTop }]"
-                  @click="toggleAlwaysOnTop"
-                  :title="isAlwaysOnTop ? t('sidebar.unpin') : t('sidebar.pin')"
-                >
-                  📌
-                </button>
-                <button
-                  :class="['sidebar-btn', { active: activePanel === 'tasks' && currentPage === 'main' }]"
-                  @click="switchPanel('tasks')"
-                  :title="t('sidebar.tasks')"
-                >
-                  <NIcon :component="ListIcon" size="22" />
-                </button>
-                <button
-                  v-if="settingsStore.settings.enableClipboardMonitor ?? true"
-                  :class="['sidebar-btn', { active: activePanel === 'clipboard' && currentPage === 'main' }]"
-                  @click="switchPanel('clipboard')"
-                  :title="t('sidebar.clipboard')"
-                >
-                  <NIcon :component="ClipboardIcon" size="22" />
-                </button>
-                <div class="sidebar-spacer" />
-                <!-- 精简按钮（底部位置，黑白模式前面） -->
-                <button
-                  :class="['sidebar-btn', { active: isCompactMode }]"
-                  @click="toggleCompactMode"
-                  :title="isCompactMode ? t('sidebar.uncompact') : t('sidebar.compact')"
-                >
-                  <NIcon :component="CompactIcon" size="22" />
-                </button>
-                <button
-                  :class="['sidebar-btn', { active: !isDark }]"
-                  @click="toggleTheme"
-                  :title="t('sidebar.toggleTheme')"
-                >
-                  <NIcon :component="isDark ? LightIcon : DarkIcon" size="22" />
-                </button>
-                <button
-                  :class="['sidebar-btn lang-btn', { active: settingsStore.settings.language === 'en' }]"
-                  @click="toggleLanguage"
-                  :title="t('sidebar.toggleLanguage')"
-                >
-                  {{ settingsStore.settings.language === 'zh' ? '中' : 'En' }}
-                </button>
-                <button
-                  :class="['sidebar-btn', { active: currentPage === 'settings' }]"
-                  @click="currentPage === 'settings' ? goBackToMain() : openSettingsPage()"
-                  :title="t('sidebar.settings')"
-                >
-                  <NIcon :component="SettingsIcon" size="22" />
-                </button>
-              </div>
-            </nav>
-
-            <!-- 主内容区 -->
-            <div class="main-content">
-              <!-- 任务面板 -->
-              <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isCompactMode }">
-                <!-- 非精简模式：分类 tabs -->
-                <div v-if="!isCompactMode" class="panel-tabs" @mousedown="startTabsDrag">
-                  <CategoryTabs />
-                </div>
-
-                <!-- 非精简模式：搜索行 -->
-                <div v-if="!isCompactMode" class="panel-search-row">
-                  <div class="task-search-row">
-                    <NButton
-                      type="primary" size="small"
-                      @click="openAddTask"
-                      class="search-action-btn"
-                    >
-                      <template #icon><NIcon :component="AddIcon" /></template>
-                      {{ t('header.task') }}
-                    </NButton>
-                    <div class="search-bar-wrapper">
-                      <SearchBar />
-                    </div>
-                    <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
-                      <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
-                    </button>
-                    <NDropdown
-                      placement="bottom-end"
-                      :options="sortModeOptions"
-                      @select="handleSortSelect"
-                    >
-                      <button class="view-toggle-btn" :title="sortModeLabel">
-                        <NIcon :component="SortIcon" size="16" />
-                      </button>
-                    </NDropdown>
-                  </div>
-                </div>
-
-                <!-- 精简模式：剪贴板迷你分类切换器（任务面板不需要） -->
-
-                <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isCompactMode, 'stacked-list': taskViewMode === 'stacked' }" :style="taskStackStyle" @contextmenu="handleTaskListContextMenu">
-                  <div v-if="filteredTasks.length === 0" class="empty">
-                    {{ t('empty.noTasks') }}
-                  </div>
-                  <draggable
-                    v-else
-                    v-model="taskList"
-                    :disabled="!dragEnabled"
-                    item-key="id"
-                    ghost-class="ghost"
-                    chosen-class="chosen"
-                    drag-class="dragging"
-                    :animation="200"
-                    :force-fallback="true"
-                    :fallback-tolerance="3"
-                    class="drag-container"
-                    :class="{ 'is-dragging': isDragging }"
-                    @start="onDragStart"
-                    @end="onDragEnd"
-                  >
-                    <template #item="{ element }">
-                      <div class="task-wrapper">
-                        <TaskCard
-                          :task="element"
-                          :category-color="getCategoryColor(element)"
-                          :categories="categoryStore.categories"
-                          :is-editing-title="editingTaskId === element.id"
-                          :compact="isCompactMode"
-                          @edit="editTask"
-                          @delete="deleteTask"
-                          @toggle-status="toggleTaskStatus"
-                          @update-priority="updateTaskPriority"
-                          @update-category="updateTaskCategory"
-                          @update-start-date="updateTaskStartDate"
-                          @update-due-date="updateTaskDueDate"
-                          @update-title="updateTaskTitle"
-                          @update-description="updateTaskDescription"
-                          @update-thumbnail="updateTaskThumbnail"
-                          @move-to-top="moveTaskToTop"
-                          @editing-desc-change="(val: boolean) => isEditingDesc = val"
-                          @editing-title-change="(val: boolean) => isEditingTitle = val"
-                        />
-                      </div>
-                    </template>
-                  </draggable>
-                </div>
-
-                <TaskFormModal
-                  :show="showTaskForm"
-                  :task="editingTask"
-                  @close="showTaskForm = false"
-                  @saved="onTaskSaved"
-                />
-
-                <!-- 任务列表右键菜单 -->
-                <NDropdown
-                  placement="bottom-start"
-                  trigger="manual"
-                  :x="taskListContextMenuX"
-                  :y="taskListContextMenuY"
-                  :show="taskListContextMenuShow"
-                  :options="[
-                    { label: t('contextMenu.addTask'), key: 'addTask', icon: () => h(NIcon, { component: AddIcon, size: 16 }) }
-                  ]"
-                  @select="handleTaskListMenuSelect"
-                  @clickoutside="taskListContextMenuShow = false"
-                />
-              </div>
-
-              <!-- 剪贴板面板 -->
-              <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel" :class="{ 'compact-panel': isCompactMode }">
-                <!-- 非精简模式：分类 tabs -->
-                <div v-if="!isCompactMode" class="panel-tabs" @mousedown="startTabsDrag">
-                  <ClipboardCategoryTabs />
-                </div>
-
-                <!-- 非精简模式：搜索行 -->
-                <div v-if="!isCompactMode" class="panel-search-row">
-                  <div class="clipboard-search-row">
-                    <NButton
-                      type="primary" size="small"
-                      @click="handlePasteClipboard"
-                      class="search-action-btn"
-                    >
-                      <template #icon><NIcon :component="CopyIcon" /></template>
-                      {{ t('header.paste') }}
-                    </NButton>
-                    <NInput
-                      v-model:value="clipboardSearchQuery"
-                      :placeholder="t('header.searchClipboard')"
-                      clearable size="small"
-                      class="clipboard-search-input"
-                      @update:value="onClipboardSearch"
-                      @clear="clipboardSearchQuery = ''"
-                    />
-                    <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
-                      <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
-                    </button>
-                    <NDropdown
-                      placement="bottom-end"
-                      :options="clipboardSortModeOptions"
-                      @select="handleClipboardSortSelect"
-                    >
-                      <button class="view-toggle-btn" :title="clipboardSortModeLabel">
-                        <NIcon :component="SortIcon" size="16" />
-                      </button>
-                    </NDropdown>
-                  </div>
-                </div>
-
-                <!-- 精简模式：剪贴板迷你分类切换器 - 与正常模式同步 -->
-                <div v-if="isCompactMode" class="compact-clip-filter">
-                  <!-- 全部 tab -->
-                  <button
-                    :class="['clip-tab', 'all-tab', { active: clipboardStore.selectedCategoryId === null }]"
-                    @click="clipboardStore.selectCategory(null)"
-                  >{{ t('compact.all') }}</button>
-
-                  <!-- 内置分类 tab -->
-                  <button
-                    v-for="cat in clipboardStore.builtinCategories"
-                    :key="cat.id"
-                    :class="['clip-tab', 'builtin-tab', { active: clipboardStore.selectedCategoryId === cat.id }]"
-                    :style="{ '--tab-color': cat.color }"
-                    @click="clipboardStore.selectCategory(cat.id)"
-                    @contextmenu="handleClipCatContextMenu($event, cat)"
-                  >{{ cat.name === '文本' || cat.name === 'Text' ? t('compact.text') : t('compact.image') }}</button>
-
-                  <!-- 自定义分类 tab -->
-                  <button
-                    v-for="cat in clipboardStore.customCategories"
-                    :key="cat.id"
-                    :class="['clip-tab', { active: clipboardStore.selectedCategoryId === cat.id }]"
-                    :style="{ '--tab-color': cat.color }"
-                    @click="clipboardStore.selectCategory(cat.id)"
-                    @contextmenu="handleClipCatContextMenu($event, cat)"
-                  >
-                    <span v-if="cat.locked" style="margin-right: 2px;">🔒</span>
-                    <span :style="{ color: cat.color }">{{ cat.name }}</span>
-                  </button>
-                </div>
-
-                <!-- 剪贴板分类右键菜单 -->
-                <NDropdown
-                  placement="bottom-start"
-                  trigger="manual"
-                  :x="clipCatContextMenuX"
-                  :y="clipCatContextMenuY"
-                  :show="clipCatContextMenuShow"
-                  :options="clipCatContextMenuOptions"
-                  @select="handleClipCatMenuSelect"
-                  @clickoutside="clipCatContextMenuShow = false"
-                />
-
-                <ClipboardPanel :compact="isCompactMode" :stacked="isClipboardStacked" :stack-gap="settingsStore.settings.clipboardStackGap" />
-              </div>
-
-              <!-- 设置页面 -->
-              <SettingsPage v-if="currentPage === 'settings'" @back="goBackToMain" />
-            </div>
+        <!-- 窗口控制区（统一在侧边栏顶部，Mac和Win都用） -->
+        <div class="sidebar-section window-ctrl-section">
+          <div v-if="isMac" class="mac-window-controls">
+            <button class="mac-btn close" @click.stop="hideToTray()" title="关闭">
+              <span class="mac-btn-icon">×</span>
+            </button>
+            <button class="mac-btn minimize" @click.stop="appWindow.minimize()" title="最小化">
+              <span class="mac-btn-icon">−</span>
+            </button>
+            <button class="mac-btn maximize" @click.stop="toggleMaximize()" :title="isMaximized ? '还原' : '最大化'">
+              <span class="mac-btn-icon">⧉</span>
+            </button>
+          </div>
+          <div v-else class="win-window-controls">
+            <NButton quaternary size="tiny" class="win-btn" @click.stop="appWindow.minimize()">
+              <template #icon><NIcon :component="MinusIcon" :size="11" /></template>
+            </NButton>
+            <NButton quaternary size="tiny" class="win-btn" @click.stop="toggleMaximize()">
+              <template #icon><NIcon :component="isMaximized ? RestoreIcon : MaximizeIcon" :size="11" /></template>
+            </NButton>
+            <NButton quaternary size="tiny" class="win-btn close-btn" @click.stop="hideToTray()">
+              <template #icon><NIcon :component="CloseIcon" :size="11" /></template>
+            </NButton>
           </div>
         </div>
+
+        <div class="sidebar-divider"></div>
+
+        <!-- 模块切换区：任务 / 计时 / 剪贴板 -->
+        <div class="sidebar-section module-section">
+          <button
+            :class="['sidebar-btn', { active: activePanel === 'tasks' && currentPage === 'main' }]"
+            @click="switchPanel('tasks')"
+            title="任务列表"
+          >
+            <NIcon :component="ListIcon" size="20" />
+          </button>
+          <button
+            :class="['sidebar-btn timer-btn', { active: activePanel === 'timer' && currentPage === 'main', running: timerStore.isRunning }]"
+            @click="switchPanel('timer')"
+            title="任务计时"
+          >
+            <NIcon :component="TimerIcon" size="20" />
+            <span v-if="timerStore.isRunning" class="timer-pulse"></span>
+          </button>
+          <button
+            v-if="settingsStore.settings.enableClipboardMonitor ?? true"
+            :class="['sidebar-btn', { active: activePanel === 'clipboard' && currentPage === 'main' }]"
+            @click="switchPanel('clipboard')"
+            :title="t('sidebar.clipboard')"
+          >
+            <NIcon :component="ClipboardIcon" size="20" />
+          </button>
+        </div>
+
+        <div class="sidebar-spacer" />
+
+        <!-- 工具/设置区 -->
+        <div class="sidebar-section tools-section">
+          <button
+            :class="['sidebar-btn', { active: isAlwaysOnTop }]"
+            @click="toggleAlwaysOnTop"
+            :title="isAlwaysOnTop ? t('sidebar.unpin') : t('sidebar.pin')"
+          >
+            📌
+          </button>
+          <button
+            :class="['sidebar-btn', { active: isCompactMode }]"
+            @click="toggleCompactMode"
+            :title="isCompactMode ? t('sidebar.uncompact') : t('sidebar.compact')"
+          >
+            <NIcon :component="CompactIcon" size="20" />
+          </button>
+          <button
+            :class="['sidebar-btn', { active: !isDark }]"
+            @click="toggleTheme"
+            :title="t('sidebar.toggleTheme')"
+          >
+            <NIcon :component="isDark ? LightIcon : DarkIcon" size="20" />
+          </button>
+          <button
+            :class="['sidebar-btn lang-btn', { active: settingsStore.settings.language === 'en' }]"
+            @click="toggleLanguage"
+            :title="t('sidebar.toggleLanguage')"
+          >
+            {{ settingsStore.settings.language === 'zh' ? '中' : 'En' }}
+          </button>
+          <button
+            :class="['sidebar-btn', { active: currentPage === 'settings' }]"
+            @click="currentPage === 'settings' ? goBackToMain() : openSettingsPage()"
+            :title="t('sidebar.settings')"
+          >
+            <NIcon :component="SettingsIcon" size="20" />
+          </button>
+        </div>
+      </nav>
+
+      <!-- 主内容区 -->
+      <div class="main-content">
+        <!-- 任务面板 -->
+        <div v-show="activePanel === 'tasks' && currentPage === 'main'" class="panel tasks-panel" :class="{ 'compact-panel': isCompactMode }">
+          <!-- 非精简模式：分类 tabs -->
+          <div v-if="!isCompactMode" class="panel-tabs" @mousedown="startTabsDrag">
+            <CategoryTabs />
+          </div>
+
+          <!-- 非精简模式：搜索行 -->
+          <div v-if="!isCompactMode" class="panel-search-row">
+            <div class="task-search-row">
+              <NButton
+                type="primary" size="small"
+                @click="openAddTask"
+                class="search-action-btn"
+              >
+                <template #icon><NIcon :component="AddIcon" /></template>
+                {{ t('header.task') }}
+              </NButton>
+              <div class="search-bar-wrapper">
+                <SearchBar />
+              </div>
+              <button class="view-toggle-btn" @click="toggleTaskView" :title="taskViewMode === 'stacked' ? t('header.listView') : t('header.stackedView')">
+                <NIcon :component="taskViewMode === 'stacked' ? ListIcon : StackedIcon" size="16" />
+              </button>
+              <NDropdown
+                placement="bottom-end"
+                :options="sortModeOptions"
+                @select="handleSortSelect"
+              >
+                <button class="view-toggle-btn" :title="sortModeLabel">
+                  <NIcon :component="SortIcon" size="16" />
+                </button>
+              </NDropdown>
+            </div>
+          </div>
+
+          <div class="task-list" ref="taskListRef" :class="{ 'compact-list': isCompactMode, 'stacked-list': taskViewMode === 'stacked' }" :style="taskStackStyle" @contextmenu="handleTaskListContextMenu">
+            <div v-if="filteredTasks.length === 0" class="empty">
+              {{ t('empty.noTasks') }}
+            </div>
+            <draggable
+              v-else
+              v-model="taskList"
+              :disabled="!dragEnabled"
+              item-key="id"
+              ghost-class="ghost"
+              chosen-class="chosen"
+              drag-class="dragging"
+              :animation="200"
+              :force-fallback="true"
+              :fallback-tolerance="3"
+              class="drag-container"
+              :class="{ 'is-dragging': isDragging }"
+              @start="onDragStart"
+              @end="onDragEnd"
+            >
+              <template #item="{ element }">
+                <div class="task-wrapper">
+                  <TaskCard
+                    :task="element"
+                    :category-color="getCategoryColor(element)"
+                    :categories="categoryStore.categories"
+                    :is-editing-title="editingTaskId === element.id"
+                    :compact="isCompactMode"
+                    @edit="editTask"
+                    @delete="deleteTask"
+                    @toggle-status="toggleTaskStatus"
+                    @update-priority="updateTaskPriority"
+                    @update-category="updateTaskCategory"
+                    @update-start-date="updateTaskStartDate"
+                    @update-due-date="updateTaskDueDate"
+                    @update-title="updateTaskTitle"
+                    @update-description="updateTaskDescription"
+                    @update-thumbnail="updateTaskThumbnail"
+                    @move-to-top="moveTaskToTop"
+                    @editing-desc-change="(val: boolean) => isEditingDesc = val"
+                    @editing-title-change="(val: boolean) => isEditingTitle = val"
+                  />
+                </div>
+              </template>
+            </draggable>
+          </div>
+
+          <TaskFormModal
+            :show="showTaskForm"
+            :task="editingTask"
+            @close="showTaskForm = false"
+            @saved="onTaskSaved"
+          />
+
+          <NDropdown
+            placement="bottom-start"
+            trigger="manual"
+            :x="taskListContextMenuX"
+            :y="taskListContextMenuY"
+            :show="taskListContextMenuShow"
+            :options="[
+              { label: t('contextMenu.addTask'), key: 'addTask', icon: () => h(NIcon, { component: AddIcon, size: 16 }) }
+            ]"
+            @select="handleTaskListMenuSelect"
+            @clickoutside="taskListContextMenuShow = false"
+          />
+
+          <!-- FAB 添加按钮（任务面板） -->
+        </div>
+
+        <!-- 计时器面板 -->
+        <div v-show="activePanel === 'timer' && currentPage === 'main'" class="panel timer-panel-container">
+          <div class="timer-panel-scroll">
+            <TimerPanel />
+          </div>
+        </div>
+
+        <!-- 剪贴板面板 -->
+        <div v-show="activePanel === 'clipboard' && currentPage === 'main'" class="panel clipboard-panel" :class="{ 'compact-panel': isCompactMode }">
+          <div v-if="!isCompactMode" class="panel-tabs" @mousedown="startTabsDrag">
+            <ClipboardCategoryTabs />
+          </div>
+
+          <div v-if="!isCompactMode" class="panel-search-row">
+            <div class="clipboard-search-row">
+              <NButton
+                type="primary" size="small"
+                @click="handlePasteClipboard"
+                class="search-action-btn"
+              >
+                <template #icon><NIcon :component="CopyIcon" /></template>
+                {{ t('header.paste') }}
+              </NButton>
+              <NInput
+                v-model:value="clipboardSearchQuery"
+                :placeholder="t('header.searchClipboard')"
+                clearable size="small"
+                class="clipboard-search-input"
+                @update:value="onClipboardSearch"
+                @clear="clipboardSearchQuery = ''"
+              />
+              <button class="view-toggle-btn" @click="toggleClipboardView" :title="isClipboardStacked ? t('header.listView') : t('header.stackedView')">
+                <NIcon :component="isClipboardStacked ? ListIcon : StackedIcon" size="16" />
+              </button>
+              <NDropdown
+                placement="bottom-end"
+                :options="clipboardSortModeOptions"
+                @select="handleClipboardSortSelect"
+              >
+                <button class="view-toggle-btn" :title="clipboardSortModeLabel">
+                  <NIcon :component="SortIcon" size="16" />
+                </button>
+              </NDropdown>
+            </div>
+          </div>
+
+          <div v-if="isCompactMode" class="compact-clip-filter">
+            <button
+              :class="['clip-tab', 'all-tab', { active: clipboardStore.selectedCategoryId === null }]"
+              @click="clipboardStore.selectCategory(null)"
+            >{{ t('compact.all') }}</button>
+            <button
+              v-for="cat in clipboardStore.builtinCategories"
+              :key="cat.id"
+              :class="['clip-tab', 'builtin-tab', { active: clipboardStore.selectedCategoryId === cat.id }]"
+              :style="{ '--tab-color': cat.color }"
+              @click="clipboardStore.selectCategory(cat.id)"
+              @contextmenu="handleClipCatContextMenu($event, cat)"
+            >{{ cat.name === '文本' || cat.name === 'Text' ? t('compact.text') : t('compact.image') }}</button>
+            <button
+              v-for="cat in clipboardStore.customCategories"
+              :key="cat.id"
+              :class="['clip-tab', { active: clipboardStore.selectedCategoryId === cat.id }]"
+              :style="{ '--tab-color': cat.color }"
+              @click="clipboardStore.selectCategory(cat.id)"
+              @contextmenu="handleClipCatContextMenu($event, cat)"
+            >
+              <span v-if="cat.locked" style="margin-right: 2px;">🔒</span>
+              <span :style="{ color: cat.color }">{{ cat.name }}</span>
+            </button>
+          </div>
+
+          <NDropdown
+            placement="bottom-start"
+            trigger="manual"
+            :x="clipCatContextMenuX"
+            :y="clipCatContextMenuY"
+            :show="clipCatContextMenuShow"
+            :options="clipCatContextMenuOptions"
+            @select="handleClipCatMenuSelect"
+            @clickoutside="clipCatContextMenuShow = false"
+          />
+
+          <ClipboardPanel :compact="isCompactMode" :stacked="isClipboardStacked" :stack-gap="settingsStore.settings.clipboardStackGap" />
+        </div>
+
+        <!-- 设置页面 -->
+        <SettingsPage v-if="currentPage === 'settings'" @back="goBackToMain" />
+
+        <!-- 悬浮添加按钮 -->
+        <FloatingButton
+          v-if="!isCompactMode && currentPage === 'main' && activePanel !== 'clipboard'"
+          :panel="activePanel"
+          @click="activePanel === 'timer' ? message.info('新建计时任务（开发中）') : openAddTask()"
+        />
+      </div>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <div v-if="!isCompactMode && currentPage === 'main'" class="status-bar">
+      <span class="status-left">
+        <span v-if="activePanel === 'tasks'">📋 {{ taskStore.tasks.filter(t => t.status === 'todo').length }} 待办 · {{ taskStore.tasks.filter(t => t.status === 'done').length }} 已完成</span>
+        <span v-else-if="activePanel === 'timer'" class="mono">⏱ {{ timerStore.isRunning ? '计时中' : '空闲' }} · 今日专注 {{ Math.floor(timerStore.todayStats.focusSeconds / 60) }}分钟</span>
+        <span v-else-if="activePanel === 'clipboard'">📎 {{ clipboardStore.items.length }} 项</span>
+      </span>
+      <span class="status-right">
+        <span v-if="isAlwaysOnTop" class="status-badge">📌 置顶</span>
+        <span v-if="isCompactMode" class="status-badge">精简模式</span>
+      </span>
+    </div>
+  </div>
 </template>
 
 <style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html, body, #app {
-  height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: transparent;
-  color: #333;
-}
-
-/* 深色模式 */
-html.dark, html.dark body, html.dark #app {
-  background: transparent;
-  color: #e0e0e0;
-}
-
-.app-container {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  overflow: hidden;
-  background: transparent;
-}
-
+/* ====== App Layout ====== */
 .app-layout {
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: #f5f5f5;
-  /* 使用 clip-path 强制裁剪角落，消除白色像素 */
+  background: var(--bg);
   clip-path: inset(0 round 10px);
 }
 
-html.dark .app-layout {
-  background: #1a1a1a;
+/* ====== Sidebar ====== */
+.body-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* 全局 Header（仅 Windows） */
-.global-header {
-  position: relative;
+.sidebar {
+  width: 60px;
   flex-shrink: 0;
-  background: #f5f5f5;
-  border-bottom: 1px solid #e0e0e0;
-  padding: 8px 12px;
-  border-radius: 10px 10px 0 0;
+  background: var(--sidebar-bg);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  border-right: 1px solid var(--divider);
+  border-radius: 10px 0 0 10px;
+  padding: 8px 0;
+  gap: 2px;
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
 }
 
-html.dark .global-header {
-  background: #1a1a1a;
-  border-bottom-color: #333;
-}
-
-.global-header .header {
+.sidebar-section {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
+  gap: 2px;
+  padding: 4px 0;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
-/* Mac 端自定义红黄绿按钮 */
+.window-ctrl-section {
+  padding: 2px 0 6px;
+}
+
+.sidebar-divider {
+  width: 32px;
+  height: 1px;
+  background: var(--divider);
+  margin: 4px auto;
+  flex-shrink: 0;
+}
+
+.sidebar-spacer {
+  flex: 1;
+}
+
+.sidebar-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  flex-shrink: 0;
+  position: relative;
+  font-size: 16px;
+}
+
+.sidebar-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-primary);
+}
+
+html.dark .sidebar-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ddd;
+}
+
+.sidebar-btn.active {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.sidebar-btn.lang-btn {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sidebar-btn.timer-btn.running {
+  color: var(--timer-active);
+}
+
+.timer-pulse {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--timer-active);
+  animation: pulse-dot 1.5s infinite;
+}
+
+/* Mac window controls */
 .mac-window-controls {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .mac-btn {
@@ -1155,136 +1235,50 @@ html.dark .global-header {
   display: block;
 }
 
-.mac-btn.close {
-  background: #FF5F57;
-}
-.mac-btn.minimize {
-  background: #FFBD2E;
-}
-.mac-btn.maximize {
-  background: #28C840;
-}
+.mac-btn.close { background: #FF5F57; }
+.mac-btn.minimize { background: #FFBD2E; }
+.mac-btn.maximize { background: #28C840; }
+html.dark .mac-btn .mac-btn-icon { color: rgba(0, 0, 0, 0.6); }
 
-html.dark .mac-btn.close {
-  background: #FF5F57;
-}
-html.dark .mac-btn.minimize {
-  background: #FFBD2E;
-}
-html.dark .mac-btn.maximize {
-  background: #28C840;
-}
-
-html.dark .mac-btn .mac-btn-icon {
-  color: rgba(0, 0, 0, 0.6);
-}
-
-/* 侧边栏 + 内容区 */
-.body-area {
+/* Windows window controls in sidebar */
+.win-window-controls {
   display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.sidebar {
-  width: 68px;
-  flex-shrink: 0;
-  background: rgba(245, 245, 245, 0.95);
-  display: flex;
-  flex-direction: column;
-  z-index: 10;
-  border-right: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 10px 0 0 10px;
-  -webkit-app-region: drag;
-  app-region: drag;
-  user-select: none;
-}
-
-html.dark .sidebar {
-  background: rgba(26, 26, 26, 0.95);
-  border-right-color: rgba(255, 255, 255, 0.08);
-}
-
-/* Mac 端：侧边栏顶部红黄绿按钮区域 */
-.mac-window-controls {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 0 6px;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.sidebar-buttons {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding-top: 4px;
-  flex: 1;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.sidebar-btn {
-  width: 40px;
-  height: 40px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #666;
-  cursor: pointer;
-  display: flex;
+  gap: 2px;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-  flex-shrink: 0;
+  padding: 2px 0;
 }
 
-.sidebar-btn:hover {
+.win-window-controls .win-btn {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--text-secondary);
+}
+
+.win-window-controls .win-btn:hover {
   background: rgba(0, 0, 0, 0.08);
-  color: #333;
 }
 
-html.dark .sidebar-btn {
-  color: #888;
-}
-
-html.dark .sidebar-btn:hover {
+html.dark .win-window-controls .win-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: #ddd;
 }
 
-.sidebar-btn.active {
-  background: rgba(74, 144, 217, 0.25);
-  color: #4A90D9;
+.win-window-controls .close-btn:hover {
+  background: #e81123 !important;
+  color: #fff !important;
 }
 
-html.dark .sidebar-btn.active {
-  background: rgba(74, 144, 217, 0.25);
-  color: #4A90D9;
-}
-
-.sidebar-btn.lang-btn {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.sidebar-spacer {
-  flex: 1;
-}
-
+/* ====== Main Content ====== */
 .main-content {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 10px 0 0;
+  position: relative;
 }
 
 .panel {
@@ -1293,29 +1287,24 @@ html.dark .sidebar-btn.active {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
-  padding: 0 12px;
-  background: #f5f5f5;
-}
-
-html.dark .panel {
-  background: #1a1a1a;
+  padding: 0 14px;
+  background: var(--bg);
+  position: relative;
 }
 
 .panel.compact-panel {
   padding: 12px;
 }
 
-/* 面板内分类 tabs 区域 */
 .panel-tabs {
   flex-shrink: 0;
-  padding-top: 0;
-  padding-bottom: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
   cursor: default;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
-/* 面板内搜索行 */
 .panel-search-row {
   flex-shrink: 0;
   padding: 4px 0 8px;
@@ -1323,141 +1312,14 @@ html.dark .panel {
   app-region: no-drag;
 }
 
-.tasks-panel .task-list,
-.clipboard-panel .clipboard-list {
-  padding-top: 12px;
-  padding-bottom: 12px;
-}
-
-/* 精简模式下去掉 tabs 和搜索行的 padding */
 .panel.compact-panel .panel-tabs,
 .panel.compact-panel .panel-search-row {
   display: none;
 }
 
-html.dark .app-container {
-  background: transparent;
-}
-
-/* 窗口拖拽区域 - Tauri v2 */
-[data-tauri-drag-region] {
-  -webkit-app-region: drag;
-  app-region: drag;
-  user-select: none;
-}
-
-html.dark .header {
-  background: #1a1a1a;
-}
-
-/* 固定顶部区域 */
-.fixed-header {
-  position: relative;
-  flex-shrink: 0;
-  background: #f5f5f5 !important;
-  border-bottom: 1px solid #e0e0e0;
-  margin: -12px -12px 0 -12px;
-  padding: 12px 12px 0 12px;
-}
-
-html.dark .fixed-header {
-  background: #1a1a1a !important;
-  border-bottom-color: #333 !important;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-bottom: 8px;
-  background: inherit;
-}
-
-html.dark .header {
-  background: #1a1a1a;
-}
-
-/* 标题栏内的交互控件不可拖拽 */
-.pin-control,
-.window-controls,
-.header .n-space {
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-/* 标签按钮本身可点击 */
-.panel-tabs .tab-btn {
-  cursor: pointer;
-}
-
-.pin-control {
-  display: flex;
-  align-items: center;
-}
-
-.pin-control .n-button {
-  padding: 0 6px;
-}
-
-.pin-control .pin-emoji {
-  font-size: 14px;
-  line-height: 1;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
-  transition: transform 0.2s ease;
-  display: inline-block;
-}
-
-.pin-control .n-button:not(.n-button--primary-type) .pin-emoji {
-  transform: rotate(45deg);
-  opacity: 0.6;
-}
-
-.window-controls {
-  display: flex;
-  gap: 8px;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.dot.close { background: #FF5F57; }
-.dot.minimize { background: #FFBD2E; }
-.dot.maximize { background: #28C840; }
-
-/* Windows 按钮样式 */
-.win-controls {
-  gap: 4px;
-}
-
-.win-controls .win-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 6px;
-}
-
-.win-controls .win-btn:hover {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 6px;
-}
-
-html.dark .win-controls .win-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-}
-
-.win-controls .close-btn:hover {
-  background: #e81123 !important;
-  color: #fff !important;
-  border-radius: 6px;
-}
-
-/* 任务搜索行 */
-.task-search-row {
+/* ====== Search Rows ====== */
+.task-search-row,
+.clipboard-search-row {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -1466,13 +1328,6 @@ html.dark .win-controls .win-btn:hover {
 .task-search-row .search-bar-wrapper {
   flex: 1;
   min-width: 0;
-}
-
-/* 剪贴板搜索行 */
-.clipboard-search-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
 }
 
 .clipboard-search-row .clipboard-search-input {
@@ -1488,34 +1343,23 @@ html.dark .win-controls .win-btn:hover {
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 8px;
-  background: rgba(100, 100, 100, 0.1);
-  color: #888;
+  border-radius: var(--radius-sm);
+  background: rgba(100, 100, 100, 0.08);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .view-toggle-btn:hover {
-  background: rgba(100, 100, 100, 0.2);
-  color: #4A90D9;
-}
-
-html.dark .view-toggle-btn {
-  background: rgba(100, 100, 100, 0.2);
-  color: #777;
-}
-
-html.dark .view-toggle-btn:hover {
-  background: rgba(100, 100, 100, 0.3);
-  color: #4A90D9;
+  background: rgba(100, 100, 100, 0.16);
+  color: var(--accent);
 }
 
 .search-action-btn {
   flex-shrink: 0;
-  margin-right: 8px;
 }
 
-/* 精简模式下剪贴板操作栏 — 紧贴右侧，最小化占用 */
+/* ====== Compact Mode ====== */
 .compact-clipboard-actions {
   position: absolute;
   top: 10px;
@@ -1527,14 +1371,7 @@ html.dark .view-toggle-btn:hover {
   width: 28px;
   height: 28px;
 }
-.header-action-btn {
-  flex-shrink: 0;
-  height: 28px;
-  font-size: 13px;
-  padding: 0 12px;
-}
 
-/* 精简模式剪贴板分类 - 与正常模式 CategoryTabs 同步样式 */
 .compact-clip-filter {
   display: flex;
   align-items: center;
@@ -1546,16 +1383,14 @@ html.dark .view-toggle-btn:hover {
   scrollbar-width: none;
 }
 
-.compact-clip-filter::-webkit-scrollbar {
-  display: none;
-}
+.compact-clip-filter::-webkit-scrollbar { display: none; }
 
 .clip-tab {
   padding: 4px 12px;
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: #888;
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 14px;
   white-space: nowrap;
@@ -1564,102 +1399,41 @@ html.dark .view-toggle-btn:hover {
 }
 
 .clip-tab:hover {
-  background: rgba(74, 144, 217, 0.08);
-  color: #4A90D9;
+  background: var(--accent-light);
+  color: var(--accent);
 }
 
 .clip-tab.active {
-  color: var(--tab-color, #4A90D9);
-  border-bottom: 2px solid var(--tab-color, #4A90D9);
+  color: var(--tab-color, var(--accent));
+  border-bottom: 2px solid var(--tab-color, var(--accent));
   border-radius: 4px 4px 0 0;
 }
 
 .all-tab.active {
-  background: rgba(74, 144, 217, 0.15);
+  background: var(--accent-light);
   font-weight: 600;
-  color: #4A90D9;
+  color: var(--accent);
 }
 
 .builtin-tab.active {
-  background: rgba(74, 144, 217, 0.12);
+  background: var(--accent-light);
 }
 
-html.dark .clip-tab {
-  color: #999;
-}
-
-html.dark .clip-tab:hover {
-  background: rgba(74, 144, 217, 0.1);
-  color: #5BA4F5;
-}
-
-html.dark .clip-tab.active {
-  color: var(--tab-color, #5BA4F5);
-  border-bottom-color: var(--tab-color, #5BA4F5);
-}
-
-html.dark .all-tab.active {
-  background: rgba(74, 144, 217, 0.18);
-  color: #5BA4F5;
-}
-
-html.dark .builtin-tab.active {
-  background: rgba(74, 144, 217, 0.15);
-}
-
-/* 任务列表（唯一可滚动区域） */
+/* ====== Task List ====== */
 .task-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 6px;
+  padding: 8px 4px;
 }
 
-/* 精简模式列表 */
 .task-list.compact-list {
   padding: 0;
 }
 
 .task-list.compact-list .task-wrapper {
   margin-bottom: 6px;
-}
-
-/* 滚动条默认隐藏，hover/滚动时显示 */
-.task-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.task-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.task-list::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 10px;
-  transition: background 0.3s;
-}
-
-/* 鼠标移到列表区域时显示滚动条 - 浅色模式 */
-.task-list:hover::-webkit-scrollbar-thumb {
-  background: rgba(100, 100, 100, 0.2);
-}
-
-.task-list:hover::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 100, 100, 0.35);
-}
-
-/* 深色模式滚动条 */
-html.dark .task-list::-webkit-scrollbar-thumb {
-  background: transparent;
-}
-
-html.dark .task-list:hover::-webkit-scrollbar-thumb {
-  background: rgba(80, 80, 80, 0.4);
-}
-
-html.dark .task-list:hover::-webkit-scrollbar-thumb:hover {
-  background: rgba(80, 80, 80, 0.6);
 }
 
 .drag-container {
@@ -1673,7 +1447,6 @@ html.dark .task-list:hover::-webkit-scrollbar-thumb:hover {
   user-select: none;
 }
 
-/* 任务层叠模式 */
 .task-list.stacked-list .task-wrapper {
   margin-bottom: calc(-80px + var(--stack-gap, 64px));
   transition: transform 0.2s ease, z-index 0s;
@@ -1696,7 +1469,6 @@ html.dark .task-list:hover::-webkit-scrollbar-thumb:hover {
   transform: translateY(-8px) scale(1.02);
 }
 
-/* 拖拽中：禁用卡片 hover 效果，避免干扰排挤动画 */
 .drag-container.is-dragging .task-wrapper {
   cursor: grabbing;
 }
@@ -1704,54 +1476,71 @@ html.dark .task-list:hover::-webkit-scrollbar-thumb:hover {
 .empty {
   text-align: center;
   padding: 40px;
-  color: #888;
+  color: var(--text-secondary);
 }
 
-/* 固定底部区域 */
-.footer {
-  flex-shrink: 0;
-  padding-top: 12px;
-  background: #f5f5f5;
-  border-top: 1px solid #e0e0e0;
-  margin: 0 -12px -12px -12px;
-  padding: 12px 12px 12px 12px;
-}
-
-html.dark .footer {
-  background: #1a1a1a;
-  border-top-color: #333;
-}
-
-/* 拖拽动画效果 */
 .ghost {
   opacity: 0.2;
-  border: 2px dashed #4A90D9;
-  border-radius: 12px;
-  background: rgba(74, 144, 217, 0.05);
-}
-
-html.dark .ghost {
-  border-color: #5BA4F5;
-  background: rgba(74, 144, 217, 0.08);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-light);
 }
 
 .chosen {
   opacity: 0.95;
-  box-shadow: 0 8px 24px rgba(74, 144, 217, 0.2);
-}
-
-html.dark .chosen {
-  box-shadow: 0 8px 24px rgba(74, 144, 217, 0.3);
+  box-shadow: var(--shadow-lg);
 }
 
 .dragging {
   opacity: 1;
-  box-shadow: 0 16px 40px rgba(74, 144, 217, 0.3);
-  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(74, 144, 217, 0.25);
+  border-radius: var(--radius-md);
   transform: scale(1.03) rotate(1deg);
 }
 
-html.dark .dragging {
-  box-shadow: 0 16px 40px rgba(74, 144, 217, 0.25);
+/* ====== Timer Panel ====== */
+.timer-panel-container {
+  padding: 16px 20px;
+}
+
+.timer-panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+/* ====== Status Bar ====== */
+.status-bar {
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--sidebar-bg);
+  border-top: 1px solid var(--divider);
+  border-radius: 0 0 10px 10px;
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+.status-left, .status-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.status-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--accent-light);
+  color: var(--accent);
 }
 </style>

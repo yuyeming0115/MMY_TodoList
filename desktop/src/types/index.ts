@@ -136,10 +136,59 @@ export interface BackupPreview {
   hasSettings: boolean;
 }
 
-// 恢复选项
+// 备份选项
 export interface RestoreOptions {
   overwrite: boolean; // 是否覆盖现有数据
   restoreTasks: boolean;
   restoreClipboard: boolean;
   restoreSettings: boolean;
 }
+
+// ===== 计时器相关类型 =====
+
+export interface TimerTask {
+  id: string;
+  name: string;
+  duration: number;        // 时长（秒）
+  type: 'once' | 'loop';   // 常规(执行一次停止) / 循环(到点自动重启)
+  icon: string;            // emoji图标
+  color: string;           // 主题色
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FixedReminder {
+  id: string;
+  name: string;            // 如"午饭"、"下班打卡"
+  time: string;            // HH:mm 格式
+  icon: string;            // emoji
+  enabled: boolean;
+  days?: number[];         // 周几生效（0=周日），undefined=每天
+}
+
+export interface TimerDailyStats {
+  date: string;            // YYYY-MM-DD
+  focusSeconds: number;    // 常规任务总专注秒数
+  sessionsCompleted: number; // 完成的常规任务数量
+}
+
+export interface TimerSettings {
+  soundEnabled: boolean;
+  notificationEnabled: boolean;
+  autoStartNextInLoop: boolean;
+}
+
+export const DEFAULT_TIMER_TASKS: Omit<TimerTask, 'id' | 'createdAt' | 'updatedAt'>[] = [
+  { name: '专注工作', duration: 30 * 60, type: 'once', icon: '💼', color: '#FF6B6B', sortOrder: 0 },
+  { name: 'AI跟踪', duration: 3 * 60, type: 'loop', icon: '🤖', color: '#4A90D9', sortOrder: 1 },
+  { name: '短休息', duration: 5 * 60, type: 'once', icon: '☕', color: '#28C840', sortOrder: 2 },
+  { name: '外包检查', duration: 5 * 60, type: 'once', icon: '📦', color: '#FFB800', sortOrder: 3 },
+  { name: '长休息', duration: 15 * 60, type: 'once', icon: '🧘', color: '#9C27B0', sortOrder: 4 },
+];
+
+export const DEFAULT_FIXED_REMINDERS: Omit<FixedReminder, 'id'>[] = [
+  { name: '午饭', time: '12:00', icon: '🍚', enabled: false },
+  { name: '晚饭', time: '18:00', icon: '🍚', enabled: false },
+  { name: '下班打卡', time: '18:30', icon: '🏠', enabled: true },
+];

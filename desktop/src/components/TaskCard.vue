@@ -2,8 +2,6 @@
 import { ref, computed, h, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { NIcon, NCheckbox, NDropdown, NDatePicker, NPopover, NModal, NButton } from 'naive-ui';
 import {
-  StarOutline as StarOutlineIcon,
-  Star as StarIcon,
   ChevronDownOutline as ExpandIcon,
   ChevronUpOutline as TopIcon,
   CreateOutline as EditIcon,
@@ -18,7 +16,8 @@ import {
   SyncOutline as ResetIcon,
   SwapHorizontalOutline as FlipHIcon,
   SwapVerticalOutline as FlipVIcon,
-  RefreshOutline as RotateIcon
+  RefreshOutline as RotateIcon,
+  AddOutline as PlusIcon
 } from '@vicons/ionicons5';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { readFile, exists } from '@tauri-apps/plugin-fs';
@@ -145,19 +144,15 @@ function handleDescKeydown(e: KeyboardEvent) {
   }
 }
 
-// 优先级星级 (1=高=3星, 2=中=2星, 3=低=1星)
-// 星标优先级显示（非精简模式使用）
-const priorityStars = computed(() => props.task.priority);
-
 // 精简模式下根据优先级返回底色 class
 const priorityBgClass = computed(() => {
   if (!props.compact) return '';
-  if (props.task.priority === 1) return 'priority-high-bg'; // 高优先级 - 暖色
-  if (props.task.priority === 2) return 'priority-medium-bg'; // 中优先级 - 蓝色
-  return 'priority-low-bg'; // 低优先级 - 默认
+  if (props.task.priority === 1) return 'priority-high-bg';
+  if (props.task.priority === 2) return 'priority-medium-bg';
+  return 'priority-low-bg';
 });
 
-// 点击星星设置优先级
+// 点击圆点循环切换优先级
 function handleSetPriority(starIndex: number) {
   const newPriority = starIndex as 1 | 2 | 3;
   emit('updatePriority', props.task, newPriority);
@@ -199,6 +194,12 @@ function formatDate(timestamp: number | undefined): string {
   const day = date.getDate();
   return `${month}/${day}`;
 }
+
+// 获取当前分类名称
+const currentCategoryName = computed(() => {
+  const cat = props.categories.find(c => c.id === props.task.categoryId);
+  return cat?.name || '';
+});
 
 // 更新开始日期
 function handleStartDateChange(value: number | null) {
@@ -578,11 +579,14 @@ const needsExpand = computed(() =>
   props.task.description && props.task.description.length > 30
 );
 
+// 是否有缩略图
+const hasThumbnail = computed(() => !!props.task.thumbnailBase64);
+
 // 点击卡片空白区 → 仅切换展开/折叠，不进入编辑
 function toggleExpand(e: MouseEvent) {
   const target = e.target as HTMLElement;
   // 排除交互元素
-  if (target.closest('.n-checkbox, .star-icon, .expand-icon, .date-picker-trigger, .n-date-picker, .task-title, .title-input, .right-area, .thumbnail-wrapper, .task-desc, .task-desc-empty, .desc-input, .desc-content')) return;
+  if (target.closest('.n-checkbox, .priority-dot, .star-icon, .expand-icon, .date-picker-trigger, .n-date-picker, .task-title, .title-input, .right-area, .thumbnail-wrapper, .task-desc, .task-desc-empty, .desc-input, .desc-content, .tag, .op-btn, .add-thumb-btn, .checkbox-custom')) return;
 
   isExpanded.value = !isExpanded.value;
   // 折叠时如果正在编辑，保存
@@ -594,6 +598,13 @@ function toggleExpand(e: MouseEvent) {
 function handleToggleStatus() {
   emit('toggleStatus', props.task);
 }
+
+// 优先级圆点样式
+const priorityDotClass = computed(() => {
+  if (props.task.priority === 1) return 'p-high';
+  if (props.task.priority === 2) return 'p-medium';
+  return 'p-low';
+});
 </script>
 
 <template>
@@ -614,14 +625,28 @@ function handleToggleStatus() {
   <div v-if="screenshotHint" class="screenshot-hint">
     {{ screenshotHintText }}
   </div>
+
   <div
-    class="simple-card"
-    :class="[isDone && 'done', isExpanded && 'expanded', props.compact && 'compact', props.compact && priorityBgClass]"
-    :style="{ borderLeftColor: categoryColor || 'transparent', borderLeftWidth: (categoryColor && !props.compact) ? '3px' : '0' }"
+    class="task-card"
+    :class="[
+      isDone && 'done',
+      isExpanded && 'expanded',
+      props.compact && 'compact',
+      props.compact && priorityBgClass,
+      (isEditing || isEditingDesc) && 'editing',
+      `p-${props.task.priority}`
+    ]"
     @click="toggleExpand"
     @contextmenu="handleContextMenu"
   >
-    <!-- 完成状态复选框 -->
+    <!-- 左侧色条 -->
+    <div
+      v-if="categoryColor && !props.compact"
+      class="color-bar"
+      :style="{ backgroundColor: categoryColor }"
+    ></div>
+
+    <!-- 完成状态复选框（非精简模式） -->
     <NCheckbox
       v-if="!props.compact"
       :checked="isDone"
@@ -630,125 +655,168 @@ function handleToggleStatus() {
       class="status-checkbox"
     />
 
-    <!-- 缩略图（如果有） -->
-    <div v-if="props.task.thumbnailBase64 && !props.compact" class="thumbnail-wrapper" @click.stop="openImagePreview">
-      <img
-        :src="`data:image/jpeg;base64,${props.task.thumbnailBase64}`"
-        class="thumbnail"
-        alt=""
-      />
-    </div>
+    <!-- 精简模式复选框 -->
+    <button
+      v-else
+      class="checkbox-custom"
+      :class="{ checked: isDone }"
+      @click.stop="handleToggleStatus"
+    >
+      <svg v-if="isDone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </button>
 
-    <!-- 任务内容 -->
-    <div class="task-content">
-      <div class="task-header">
-        <!-- 标题（可编辑） -->
-        <span v-if="!isEditing" class="task-title" @click="startEditTitle">
-          {{ props.task.title }}
-        </span>
-        <input
-          v-else
-          ref="titleInputRef"
-          v-model="editTitleValue"
-          class="title-input"
-          placeholder="输入任务内容"
-          @mousedown.stop
-          @blur="saveTitle"
-          @keyup.enter="saveTitle"
-          @keyup.escape="cancelEdit"
-        />
-        <!-- 右侧区域：星标 + 时间 -->
-        <span class="right-area" v-if="!props.compact">
-          <!-- 星标优先级（可点击设置） -->
-          <span class="priority-stars">
-            <NIcon
-              v-for="i in 3"
-              :key="i"
-              :component="i <= priorityStars ? StarIcon : StarOutlineIcon"
-              size="14"
-              :class="{ star: i <= priorityStars }"
-              class="star-icon"
-              @click.stop="handleSetPriority(i)"
+    <!-- 任务主体 -->
+    <div class="task-body">
+      <!-- 第一行：优先级 + 标题 + 标签 -->
+      <div class="task-row">
+        <!-- 优先级圆点 -->
+        <span v-if="!props.compact" class="priority-dot" :class="priorityDotClass" @click.stop="handleSetPriority(props.task.priority === 1 ? 3 : (props.task.priority === 2 ? 1 : 2))"></span>
+
+        <!-- 标题 -->
+        <div class="title-area">
+          <span v-if="!isEditing" class="task-title" @click.stop="startEditTitle">
+            {{ props.task.title }}
+          </span>
+          <input
+            v-else
+            ref="titleInputRef"
+            v-model="editTitleValue"
+            class="title-input"
+            placeholder="输入任务内容"
+            @mousedown.stop
+            @blur="saveTitle"
+            @keyup.enter="saveTitle"
+            @keyup.escape="cancelEdit"
+          />
+        </div>
+
+        <!-- 标签区域 -->
+        <div class="task-tags" v-if="!props.compact">
+          <!-- 分类标签 -->
+          <span v-if="currentCategoryName" class="tag category-tag" :style="{ borderLeftColor: categoryColor }">
+            {{ currentCategoryName }}
+          </span>
+
+          <!-- 开始日期 -->
+          <NPopover v-if="props.task.startDate" trigger="click" placement="bottom" :show-arrow="false">
+            <template #trigger>
+              <span class="tag date-tag">
+                <NIcon :component="CalendarIcon" size="10" />
+                {{ formatDate(props.task.startDate) }}
+              </span>
+            </template>
+            <NDatePicker
+              :value="props.task.startDate ?? null"
+              type="date"
+              size="small"
+              :default-value="Date.now()"
+              @update:value="handleStartDateChange"
+              style="width: 200px"
             />
-          </span>
-          <!-- 时间区域 -->
-          <span class="time-area">
-            <!-- 开始时间 -->
-            <NPopover trigger="click" placement="bottom" :show-arrow="false">
-              <template #trigger>
-                <span class="date-display">
-                  <NIcon :component="CalendarIcon" size="12" />
-                  <span>{{ formatDate(props.task.startDate) || '开始' }}</span>
-                </span>
-              </template>
-              <NDatePicker
-                :value="props.task.startDate ?? null"
-                type="date"
-                size="small"
-                :default-value="Date.now()"
-                @update:value="handleStartDateChange"
-                style="width: 200px"
-              />
-            </NPopover>
+          </NPopover>
 
-            <!-- 截止时间 -->
-            <NPopover trigger="click" placement="bottom" :show-arrow="false">
-              <template #trigger>
-                <span class="date-display">
-                  <NIcon :component="ClockIcon" size="12" />
-                  <span>{{ formatDate(props.task.dueDate) || '截止' }}</span>
-                </span>
-              </template>
-              <NDatePicker
-                :value="props.task.dueDate ?? null"
-                type="date"
-                size="small"
-                :default-value="props.task.startDate ?? Date.now()"
-                @update:value="handleDueDateChange"
-                style="width: 200px"
-              />
-            </NPopover>
+          <!-- 截止日期 -->
+          <NPopover trigger="click" placement="bottom" :show-arrow="false">
+            <template #trigger>
+              <span class="tag date-tag" :class="countdownClass">
+                <NIcon :component="ClockIcon" size="10" />
+                {{ formatDate(props.task.dueDate) || '截止' }}
+              </span>
+            </template>
+            <NDatePicker
+              :value="props.task.dueDate ?? null"
+              type="date"
+              size="small"
+              :default-value="props.task.startDate ?? Date.now()"
+              @update:value="handleDueDateChange"
+              style="width: 200px"
+            />
+          </NPopover>
 
-            <!-- 倒计天数 -->
-            <span v-if="countdownText" class="countdown" :class="countdownClass">
-              {{ countdownText }}
-            </span>
+          <!-- 倒计时 -->
+          <span v-if="countdownText" class="tag countdown-tag" :class="countdownClass">
+            {{ countdownText }}
           </span>
-        </span>
-        <!-- 精简模式：只显示倒计时 -->
+        </div>
+
+        <!-- 精简模式倒计时 -->
         <span v-if="props.compact && countdownText" class="compact-countdown" :class="countdownClass">
           {{ countdownText }}
         </span>
-        <!-- 展开/折叠提示图标 -->
-        <span v-if="needsExpand && !props.compact" class="expand-icon" :class="{ expanded: isExpanded }">
+
+        <!-- 操作按钮 -->
+        <div class="task-ops" v-if="!props.compact">
+          <button class="op-btn" title="置顶" @click.stop="emit('moveToTop', props.task)">
+            <NIcon :component="TopIcon" size="14" />
+          </button>
+          <button class="op-btn" title="编辑" @click.stop="startEditTitle">
+            <NIcon :component="EditIcon" size="14" />
+          </button>
+          <button class="op-btn del" title="删除" @click.stop="emit('delete', props.task.id)">
+            <NIcon :component="DeleteIcon" size="14" />
+          </button>
+        </div>
+
+        <!-- 展开/折叠按钮 -->
+        <button
+          v-if="(needsExpand || hasThumbnail || props.task.description) && !props.compact"
+          class="expand-btn"
+          :class="{ expanded: isExpanded }"
+          @click.stop="isExpanded = !isExpanded"
+        >
           <NIcon :component="ExpandIcon" size="14" />
-        </span>
+        </button>
       </div>
-      <!-- 描述（可点击编辑，支持多行） -->
+
+      <!-- 展开区域：描述 + 缩略图 -->
+      <div v-if="isExpanded && !props.compact" class="expanded-area">
+        <!-- 描述 -->
+        <div class="task-desc-wrapper">
+          <div v-if="!isEditingDesc && props.task.description" class="desc-content" @click.stop="startEditDesc">
+            {{ props.task.description }}
+          </div>
+          <div v-else-if="!isEditingDesc" class="desc-hint" @click.stop="startEditDesc">
+            点击添加描述...
+          </div>
+          <textarea
+            v-else
+            ref="descInputRef"
+            v-model="editDescValue"
+            class="desc-input"
+            placeholder="添加描述..."
+            :rows="editRows"
+            @blur="saveDesc"
+            @keydown="handleDescKeydown"
+            @keyup.escape="cancelDescEdit"
+            @mousedown.stop
+            @click.stop
+          />
+        </div>
+
+        <!-- 缩略图区域 -->
+        <div class="task-thumbs">
+          <div v-if="hasThumbnail" class="thumb-item" @click.stop="openImagePreview">
+            <img
+              :src="props.task.thumbnailBase64?.startsWith('data:') ? props.task.thumbnailBase64 : `data:image/jpeg;base64,${props.task.thumbnailBase64}`"
+              class="thumb-img"
+              alt=""
+            />
+          </div>
+          <button class="add-thumb-btn" @click.stop="selectImage" title="添加图片">
+            <NIcon :component="PlusIcon" size="18" />
+          </button>
+        </div>
+      </div>
+
+      <!-- 非展开时，有描述显示预览 -->
       <div
-        v-if="props.task.description || isEditingDesc"
-        class="task-desc"
-        :class="{ expanded: isExpanded }"
-        v-show="!props.compact"
+        v-if="!isExpanded && props.task.description && !props.compact"
+        class="desc-preview"
+        @click.stop="isExpanded = true"
       >
-        <div v-if="!isEditingDesc" class="desc-content" @click="startEditDesc">{{ props.task.description }}</div>
-        <textarea
-          v-else
-          ref="descInputRef"
-          v-model="editDescValue"
-          class="desc-input"
-          placeholder="添加描述..."
-          :rows="editRows"
-          @blur="saveDesc"
-          @keydown="handleDescKeydown"
-          @keyup.escape="cancelDescEdit"
-          @mousedown.stop
-          @click.stop
-        />
-      </div>
-      <!-- 添加描述提示（没有描述时显示） -->
-      <div v-else class="task-desc-empty" @click="startEditDesc" v-show="!props.compact">
-        点击添加描述...
+        {{ props.task.description }}
       </div>
     </div>
   </div>
@@ -758,7 +826,7 @@ function handleToggleStatus() {
     <div class="image-preview-overlay" @click="closeImagePreview" @wheel="handleWheel">
       <div class="image-preview-container" @click.stop>
         <img
-          :src="`data:image/jpeg;base64,${props.task.thumbnailBase64}`"
+          :src="props.task.thumbnailBase64?.startsWith('data:') ? props.task.thumbnailBase64 : `data:image/jpeg;base64,${props.task.thumbnailBase64}`"
           class="preview-image"
           :style="{ transform: `scale(${flipH ? -1 : 1} * ${imageScale}, ${flipV ? -1 : 1} * ${imageScale}) rotate(${imageRotate}deg)` }"
           @click="closeImagePreview"
@@ -796,77 +864,294 @@ function handleToggleStatus() {
 </template>
 
 <style scoped>
-.simple-card {
+.task-card {
+  --card-bg: #ffffff;
+  --card-hover: #fafafa;
+  --text-primary: #1a1a1a;
+  --text-secondary: #888888;
+  --text-muted: #aaaaaa;
+  --accent: #4A90D9;
+  --accent-light: rgba(74, 144, 217, 0.1);
+  --border: #e8e8e8;
+  --danger: #E05252;
+  --radius-md: 12px;
+  --radius-full: 999px;
+  --p-high: #E05252;
+  --p-medium: #FF9800;
+  --p-low: transparent;
+
   width: 100%;
-  padding: 12px 16px;
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid #e0e0e0;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   display: flex;
   align-items: flex-start;
   font-family: var(--task-font-family, inherit);
-  gap: 12px;
+  gap: 10px;
+  position: relative;
+  cursor: pointer;
+  margin-bottom: 6px;
 }
 
-html.dark .simple-card {
-  background: #2a2a2a;
-  border-color: #444;
+html.dark .task-card {
+  --card-bg: #2a2a2a;
+  --card-hover: #303030;
+  --text-primary: #f0f0f0;
+  --text-secondary: #888;
+  --text-muted: #555;
+  --accent: #5BA4F5;
+  --accent-light: rgba(91, 164, 245, 0.15);
+  --border: #3a3a3a;
 }
 
-.simple-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  border-top-color: #4A90D9;
-  border-right-color: #4A90D9;
-  border-bottom-color: #4A90D9;
-  transform: scale(1.01);
+.task-card:hover {
+  border-color: rgba(74, 144, 217, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--card-hover);
 }
 
-html.dark .simple-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  border-top-color: #4A90D9;
-  border-right-color: #4A90D9;
-  border-bottom-color: #4A90D9;
-  transform: scale(1.01);
+html.dark .task-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.simple-card.done {
+.task-card.editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.task-card.done {
   opacity: 0.5;
 }
 
-/* 精简模式样式 */
-.simple-card.compact {
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(74, 144, 217, 0.2);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+.task-card.done .task-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
 }
 
-html.dark .simple-card.compact {
-  background: rgba(42, 42, 42, 0.95);
-  border-color: rgba(91, 164, 245, 0.25);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+/* 左侧色条 */
+.color-bar {
+  width: 3px;
+  height: 50px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  top: 12px;
 }
 
-/* 精简模式禁用 hover 放大，避免被 overflow 裁切 */
-.simple-card.compact:hover {
-  transform: none;
+/* 复选框 */
+.status-checkbox {
+  flex-shrink: 0;
+  margin-top: 2px;
+  z-index: 1;
 }
 
-.simple-card.compact .task-title {
-  font-size: 18px;
+.checkbox-custom {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin-top: 2px;
+  background: transparent;
+  padding: 0;
+  z-index: 1;
+}
+
+.checkbox-custom:hover {
+  border-color: #28C840;
+  background: rgba(40, 200, 64, 0.1);
+}
+
+.checkbox-custom.checked {
+  background: #28C840;
+  border-color: #28C840;
+}
+
+.checkbox-custom svg {
+  width: 12px;
+  height: 12px;
+  color: white;
+}
+
+/* 任务主体 */
+.task-body {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0;
+}
+
+.task-card .color-bar + .status-checkbox,
+.task-card .color-bar + .checkbox-custom {
+  margin-left: 6px;
+}
+
+/* 第一行 */
+.task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* 优先级圆点 */
+.priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 6px;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.priority-dot:hover {
+  transform: scale(1.3);
+}
+
+.priority-dot.p-high {
+  background: var(--p-high);
+}
+
+.priority-dot.p-medium {
+  background: var(--p-medium);
+}
+
+.priority-dot.p-low {
+  background: var(--border);
+}
+
+/* 标题区域 */
+.title-area {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-primary);
+  word-break: break-word;
+  cursor: text;
+}
+
+.title-input {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--accent);
+  outline: none;
+  width: 100%;
+  padding: 0;
+  font-family: inherit;
+}
+
+.title-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* 标签区域 */
+.task-tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.task-card:hover .task-tags {
+  opacity: 1;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+html.dark .tag {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tag:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.category-tag {
+  padding-left: 5px;
+}
+
+.date-tag {
+  border-left: none;
+}
+
+.countdown-tag.normal {
+  background: rgba(40, 200, 64, 0.1);
+  color: #28C840;
+}
+
+.countdown-tag.soon {
+  background: rgba(255, 184, 0, 0.15);
+  color: #FFB800;
+}
+
+.countdown-tag.urgent {
+  background: rgba(224, 82, 82, 0.15);
+  color: var(--danger);
   font-weight: 600;
-  color: #1a1a1a;
+  animation: pulse-tag 2s infinite;
 }
 
-html.dark .simple-card.compact .task-title {
-  color: #f0f0f0;
+.countdown-tag.overdue {
+  background: rgba(224, 82, 82, 0.15);
+  color: var(--danger);
+  font-weight: 600;
 }
 
-.simple-card.compact .compact-countdown {
+html.dark .countdown-tag.normal {
+  background: rgba(40, 200, 64, 0.2);
+}
+
+html.dark .countdown-tag.soon {
+  background: rgba(255, 184, 0, 0.2);
+}
+
+html.dark .countdown-tag.urgent,
+html.dark .countdown-tag.overdue {
+  background: rgba(224, 82, 82, 0.25);
+}
+
+@keyframes pulse-tag {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 精简模式倒计时 */
+.compact-countdown {
   padding: 3px 10px;
   border-radius: 12px;
   font-size: 14px;
@@ -875,44 +1160,44 @@ html.dark .simple-card.compact .task-title {
   flex-shrink: 0;
 }
 
-.simple-card.compact .compact-countdown.normal {
+.compact-countdown.normal {
   background: #e8f5e9;
   color: #28C840;
 }
 
-.simple-card.compact .compact-countdown.soon {
+.compact-countdown.soon {
   background: rgba(224, 82, 82, 0.12);
   color: #E05252;
 }
 
-.simple-card.compact .compact-countdown.urgent {
+.compact-countdown.urgent {
   background: #ffebee;
   color: #E05252;
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-.simple-card.compact .compact-countdown.overdue {
+.compact-countdown.overdue {
   background: #f5f5f5;
   color: #999;
 }
 
-html.dark .simple-card.compact .compact-countdown.normal {
+html.dark .compact-countdown.normal {
   background: rgba(40, 200, 64, 0.2);
   color: #4ade80;
 }
 
-html.dark .simple-card.compact .compact-countdown.soon {
+html.dark .compact-countdown.soon {
   background: rgba(224, 82, 82, 0.25);
   color: #f87171;
 }
 
-html.dark .simple-card.compact .compact-countdown.urgent {
+html.dark .compact-countdown.urgent {
   background: rgba(224, 82, 82, 0.2);
   color: #f87171;
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-html.dark .simple-card.compact .compact-countdown.overdue {
+html.dark .compact-countdown.overdue {
   background: rgba(100, 100, 100, 0.2);
   color: #888;
 }
@@ -922,312 +1207,278 @@ html.dark .simple-card.compact .compact-countdown.overdue {
   50% { opacity: 0.6; }
 }
 
-/* 精简模式 - 优先级底色 */
-.simple-card.compact.priority-high-bg {
-  background: rgba(255, 248, 225, 0.95);
-  border-color: rgba(255, 183, 77, 0.4);
-}
-
-html.dark .simple-card.compact.priority-high-bg {
-  background: rgba(62, 39, 35, 0.95);
-  border-color: rgba(255, 183, 77, 0.35);
-}
-
-.simple-card.compact.priority-medium-bg {
-  background: rgba(227, 242, 253, 0.95);
-  border-color: rgba(100, 181, 246, 0.4);
-}
-
-html.dark .simple-card.compact.priority-medium-bg {
-  background: rgba(25, 40, 60, 0.95);
-  border-color: rgba(100, 181, 246, 0.35);
-}
-
-.simple-card.compact.priority-low-bg {
-  background: rgba(232, 245, 233, 0.95);
-  border-color: rgba(102, 187, 106, 0.4);
-}
-
-html.dark .simple-card.compact.priority-low-bg {
-  background: rgba(27, 45, 35, 0.95);
-  border-color: rgba(102, 187, 106, 0.35);
-}
-
-.status-checkbox {
+/* 操作按钮 */
+.task-ops {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
   flex-shrink: 0;
-  margin-top: 2px;
 }
 
-.thumbnail-wrapper {
-  width: 48px;
-  height: 48px;
+.task-card:hover .task-ops {
+  opacity: 1;
+}
+
+.op-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.op-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-primary);
+}
+
+html.dark .op-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.op-btn.del:hover {
+  background: rgba(224, 82, 82, 0.1);
+  color: var(--danger);
+}
+
+/* 展开按钮 */
+.expand-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, color 0.15s;
   flex-shrink: 0;
+  margin-top: 1px;
+  padding: 0;
+  border-radius: 4px;
+}
+
+.expand-btn:hover {
+  color: var(--accent);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+html.dark .expand-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.expand-btn.expanded {
+  transform: rotate(180deg);
+}
+
+/* 展开区域 */
+.expanded-area {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 描述 */
+.task-desc-wrapper {
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: var(--radius-sm, 8px);
+}
+
+html.dark .task-desc-wrapper {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.desc-content {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+
+.desc-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.desc-hint:hover {
+  color: var(--accent);
+}
+
+.desc-input {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px dashed var(--accent);
+  outline: none;
+  width: 100%;
+  padding: 4px 6px;
+  font-family: inherit;
+  resize: none;
+  line-height: 1.6;
+  border-radius: 4px;
+  background: var(--accent-light);
+}
+
+.desc-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* 描述预览（折叠时） */
+.desc-preview {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding-left: 16px;
+}
+
+.desc-preview:hover {
+  color: var(--text-secondary);
+}
+
+/* 缩略图区域 */
+.task-thumbs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.thumb-item {
+  width: 80px;
+  height: 56px;
   border-radius: 8px;
   overflow: hidden;
-  background: #f0f0f0;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg, #f5f5f0);
+  transition: transform 0.15s, box-shadow 0.15s;
 }
 
-html.dark .thumbnail-wrapper {
-  background: #333;
+.thumb-item:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 1;
 }
 
-.thumbnail {
+html.dark .thumb-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.thumb-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.task-content {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
+.add-thumb-btn {
+  width: 80px;
+  height: 56px;
+  border-radius: 8px;
+  border: 2px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
 }
 
-.task-header {
-  display: flex;
-  align-items: flex-start;
+.add-thumb-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* 精简模式样式 */
+.task-card.compact {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(74, 144, 217, 0.2);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   gap: 8px;
 }
 
-.task-title {
-  font-size: var(--task-font-size, 14px);
-  color: #333;
-  font-weight: 500;
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.task-card.compact .color-bar {
+  display: none;
 }
 
-html.dark .task-title {
-  color: #e0e0e0;
+html.dark .task-card.compact {
+  background: rgba(42, 42, 42, 0.95);
+  border-color: rgba(91, 164, 245, 0.25);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
 }
 
-.simple-card:hover .task-title {
-  color: #FFB800;
+.task-card.compact:hover {
+  transform: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
 }
 
-html.dark .simple-card:hover .task-title {
-  color: #FFB800;
+html.dark .task-card.compact:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
 }
 
-.simple-card.done .task-title {
-  text-decoration: line-through;
+.task-card.compact .task-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-.title-input {
-  font-size: var(--task-font-size, 14px);
-  font-weight: 500;
-  color: #333;
-  background: transparent;
-  border: none;
-  outline: none;
-  flex: 1;
-  min-width: 100px;
-  padding: 0;
-  font-family: inherit;
+/* 精简模式 - 优先级底色 */
+.task-card.compact.priority-high-bg {
+  background: rgba(255, 248, 225, 0.95);
+  border-color: rgba(255, 183, 77, 0.4);
 }
 
-html.dark .title-input {
-  color: #e0e0e0;
+html.dark .task-card.compact.priority-high-bg {
+  background: rgba(62, 39, 35, 0.95);
+  border-color: rgba(255, 183, 77, 0.35);
 }
 
-.title-input::placeholder {
-  color: #999;
+.task-card.compact.priority-medium-bg {
+  background: rgba(227, 242, 253, 0.95);
+  border-color: rgba(100, 181, 246, 0.4);
 }
 
-html.dark .title-input::placeholder {
-  color: #666;
+html.dark .task-card.compact.priority-medium-bg {
+  background: rgba(25, 40, 60, 0.95);
+  border-color: rgba(100, 181, 246, 0.35);
 }
 
-.right-area {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
+.task-card.compact.priority-low-bg {
+  background: rgba(232, 245, 233, 0.95);
+  border-color: rgba(102, 187, 106, 0.4);
 }
 
-.priority-stars {
-  display: flex;
-  gap: 2px;
-  color: #ccc;
+html.dark .task-card.compact.priority-low-bg {
+  background: rgba(27, 45, 35, 0.95);
+  border-color: rgba(102, 187, 106, 0.35);
 }
 
-.priority-stars .star-icon {
-  cursor: pointer;
-  transition: color 0.15s ease, transform 0.15s ease;
-}
-
-.priority-stars .star-icon:hover {
-  transform: scale(1.15);
-}
-
-.priority-stars .star {
-  color: #FFB800;
-}
-
-.time-area {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: calc(var(--task-font-size, 14px) * 0.857);
-}
-
-.date-display {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  color: #888;
-  cursor: pointer;
-  padding: 1px 4px;
-  border-radius: 4px;
-  transition: background 0.15s ease;
-}
-
-html.dark .date-display {
-  color: #999;
-}
-
-.date-display:hover {
-  background: rgba(74, 144, 217, 0.1);
-  color: #4A90D9;
-}
-
-html.dark .date-display:hover {
-  background: rgba(74, 144, 217, 0.15);
-}
-
-.countdown {
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-size: calc(var(--task-font-size, 14px) * 0.786);
-  font-weight: 500;
-}
-
-.countdown.normal {
-  background: #e8f5e9;
-  color: #28C840;
-}
-
-.countdown.soon {
-  background: rgba(224, 82, 82, 0.1);
-  color: #E05252;
-}
-
-.countdown.urgent {
-  background: #ffebee;
-  color: #E05252;
-}
-
-.countdown.overdue {
-  background: #f5f5f5;
-  color: #999;
-}
-
-html.dark .countdown.normal {
-  background: rgba(40, 200, 64, 0.15);
-  color: #28C840;
-}
-
-html.dark .countdown.soon {
-  background: rgba(224, 82, 82, 0.2);
-  color: #E05252;
-}
-
-html.dark .countdown.urgent {
-  background: rgba(224, 82, 82, 0.15);
-  color: #E05252;
-}
-
-html.dark .countdown.overdue {
-  background: rgba(100, 100, 100, 0.15);
-  color: #888;
-}
-
-.expand-icon {
-  color: #4A90D9;
-  flex-shrink: 0;
-  transition: transform 0.3s ease;
-  cursor: pointer;
-  margin-top: 2px;
-}
-
-.expand-icon.expanded {
-  transform: rotate(180deg);
-}
-
-.task-desc {
-  font-size: calc(var(--task-font-size, 14px) * 0.857);
-  color: #888;
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-height: 18px;
-  transition: max-height 0.3s ease, white-space 0.3s ease;
-}
-
-html.dark .task-desc {
-  color: #999;
-}
-
-.task-desc.expanded {
-  white-space: pre-wrap;
-  max-height: calc(20 * 18px); /* 限制20行 */
-  overflow-y: auto;
-}
-
-.desc-content {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.task-desc-empty {
-  font-size: calc(var(--task-font-size, 14px) * 0.857);
-  color: #999;
-  margin-top: 4px;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: background 0.15s ease;
-}
-
-html.dark .task-desc-empty {
-  color: #666;
-}
-
-.task-desc-empty:hover {
-  background: rgba(74, 144, 217, 0.1);
-  color: #4A90D9;
-}
-
-html.dark .task-desc-empty:hover {
-  background: rgba(74, 144, 217, 0.15);
-}
-
-.desc-input {
-  font-size: calc(var(--task-font-size, 14px) * 0.857);
-  color: #888;
-  background: transparent;
-  border: none;
-  outline: none;
-  width: 100%;
-  padding: 0;
-  font-family: inherit;
-  resize: none;
-  line-height: 18px;
-}
-
-html.dark .desc-input {
-  color: #999;
-}
-
-.desc-input::placeholder {
-  color: #aaa;
-}
-
+/* 截图提示 */
 .screenshot-hint {
   position: fixed;
   bottom: 20px;
